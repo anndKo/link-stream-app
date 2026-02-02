@@ -305,6 +305,7 @@ export type Database = {
       payment_boxes: {
         Row: {
           admin_confirmed_at: string | null
+          bill_image_url: string | null
           buyer_bank_account: string | null
           buyer_bank_name: string | null
           buyer_confirmed_at: string | null
@@ -332,6 +333,7 @@ export type Database = {
         }
         Insert: {
           admin_confirmed_at?: string | null
+          bill_image_url?: string | null
           buyer_bank_account?: string | null
           buyer_bank_name?: string | null
           buyer_confirmed_at?: string | null
@@ -359,6 +361,7 @@ export type Database = {
         }
         Update: {
           admin_confirmed_at?: string | null
+          bill_image_url?: string | null
           buyer_bank_account?: string | null
           buyer_bank_name?: string | null
           buyer_confirmed_at?: string | null
