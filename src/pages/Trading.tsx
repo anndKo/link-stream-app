@@ -97,6 +97,7 @@ interface PaymentBox {
   seller_bank_account?: string | null;
   seller_bank_name?: string | null;
   seller_confirmed_at?: string | null;
+  bill_image_url?: string | null;
 }
 
 const Trading = () => {
@@ -151,6 +152,13 @@ const Trading = () => {
   // Buyer confirm transaction dialog (after clicking confirm button)
   const [showConfirmDurationDialog, setShowConfirmDurationDialog] = useState(false);
   const [refundBankName, setRefundBankName] = useState('');
+  
+  // Bill upload dialog
+  const [showBillUploadDialog, setShowBillUploadDialog] = useState(false);
+  const [billImage, setBillImage] = useState<File | null>(null);
+  const [billImagePreview, setBillImagePreview] = useState<string | null>(null);
+  const [isUploadingBill, setIsUploadingBill] = useState(false);
+  const billImageInputRef = useRef<HTMLInputElement>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -743,37 +751,82 @@ const Trading = () => {
     }
   };
 
-  // Buyer clicks "Đã thanh toán"
-  const handleBuyerPaid = async (paymentBoxId: string) => {
-    if (!user) return;
+  // Buyer clicks "Đã thanh toán" - opens bill upload dialog
+  const handleOpenBillUploadDialog = (paymentBoxId: string) => {
+    setSelectedPaymentBoxId(paymentBoxId);
+    setShowBillUploadDialog(true);
+  };
 
+  // Handle bill image selection
+  const handleBillImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setBillImage(file);
+      setBillImagePreview(URL.createObjectURL(file));
+    }
+  };
+
+  // Buyer submits payment with bill
+  const handleBuyerPaid = async () => {
+    if (!user || !selectedPaymentBoxId) return;
+
+    setIsUploadingBill(true);
     try {
+      let billUrl = null;
+
+      // Upload bill image if provided
+      if (billImage) {
+        const fileExt = billImage.name.split('.').pop();
+        const fileName = `bills/${user.id}/${Date.now()}.${fileExt}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('posts')
+          .upload(fileName, billImage);
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('posts')
+          .getPublicUrl(fileName);
+
+        billUrl = publicUrl;
+      }
+
       const { error } = await supabase
         .from('payment_boxes')
         .update({ 
-          status: 'buyer_paid'
+          status: 'buyer_paid',
+          bill_image_url: billUrl
         })
-        .eq('id', paymentBoxId);
+        .eq('id', selectedPaymentBoxId);
 
       if (error) throw error;
 
       setPaymentBoxes(prev => prev.map(box => 
-        box.id === paymentBoxId 
-          ? { ...box, status: 'buyer_paid' as PaymentBoxStatus } 
+        box.id === selectedPaymentBoxId 
+          ? { ...box, status: 'buyer_paid' as PaymentBoxStatus, bill_image_url: billUrl } 
           : box
       ));
 
       toast({
         title: 'Đã gửi thông tin thanh toán',
-        description: 'Đang chờ Admin xác nhận.'
+        description: 'Bill đã được gửi đến Admin để xác nhận.'
       });
+
+      // Reset states
+      setShowBillUploadDialog(false);
+      setSelectedPaymentBoxId(null);
+      setBillImage(null);
+      setBillImagePreview(null);
     } catch (error) {
       console.error('Error confirming payment:', error);
       toast({
         title: 'Lỗi',
-        description: 'Không thể xác nhận thanh toán',
+        description: 'Không thể gửi thông tin thanh toán',
         variant: 'destructive'
       });
+    } finally {
+      setIsUploadingBill(false);
     }
   };
 
@@ -1133,16 +1186,29 @@ const Trading = () => {
     return (
       <div key={box.id} className="flex justify-center my-3">
         <div className={`w-full max-w-[90%] rounded-lg p-4 border-2 ${getBorderColor()}`}>
-          <div className="flex items-center gap-2 mb-2">
-            <CreditCard className="w-5 h-5" />
-            <span className="font-medium">Hộp thanh toán</span>
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="flex items-center gap-2">
+              <CreditCard className="w-5 h-5" />
+              <span className="font-medium">Hộp thanh toán</span>
+            </div>
+            {/* Show role badge */}
+            {isSender && (
+              <span className="text-xs px-2 py-1 rounded-full bg-primary/20 text-primary font-medium">
+                👤 Người bán
+              </span>
+            )}
+            {isReceiver && (
+              <span className="text-xs px-2 py-1 rounded-full bg-blue-500/20 text-blue-500 font-medium">
+                🛒 Người mua
+              </span>
+            )}
           </div>
           
           <p className="text-sm text-muted-foreground mb-3">
             {getStatusMessage()}
           </p>
 
-          {/* Show remaining time for active transactions */}
+          {/* Show remaining time for active transactions (admin confirmed but not completed) */}
           {box.status === 'admin_confirmed' && remainingDays !== null && !box.seller_completed_at && (
             <div className="flex items-center gap-2 text-sm mb-3 p-2 rounded bg-secondary/50">
               <Timer className="w-4 h-4" />
@@ -1150,11 +1216,15 @@ const Trading = () => {
             </div>
           )}
 
-          {/* Show remaining time after seller completed */}
-          {box.seller_completed_at && !box.buyer_confirmed_at && remainingDays !== null && !expired && (
-            <div className="flex items-center gap-2 text-sm mb-3 p-2 rounded bg-secondary/50">
+          {/* Show remaining time after seller completed (for both buyer and seller) */}
+          {box.seller_completed_at && !box.buyer_confirmed_at && remainingDays !== null && (
+            <div className={`flex items-center gap-2 text-sm mb-3 p-2 rounded ${expired ? 'bg-orange-500/20' : 'bg-secondary/50'}`}>
               <Timer className="w-4 h-4" />
-              <span>Còn {remainingDays} ngày để xác nhận nhận hàng</span>
+              {expired ? (
+                <span className="text-orange-500 font-medium">⏰ Đã hết thời gian giao dịch</span>
+              ) : (
+                <span>Thời gian còn lại: <strong>{remainingDays} ngày</strong></span>
+              )}
             </div>
           )}
 
@@ -1210,7 +1280,7 @@ const Trading = () => {
                 <Button
                   size="sm"
                   variant="default"
-                  onClick={() => handleBuyerPaid(box.id)}
+                  onClick={() => handleOpenBillUploadDialog(box.id)}
                   className="gap-1"
                 >
                   <Check className="w-4 h-4" />
@@ -2518,6 +2588,91 @@ const Trading = () => {
                 className="rounded-xl gradient-primary"
               >
                 Xác nhận nhận tiền
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bill Upload Dialog */}
+      <Dialog open={showBillUploadDialog} onOpenChange={(open) => {
+        setShowBillUploadDialog(open);
+        if (!open) {
+          setSelectedPaymentBoxId(null);
+          setBillImage(null);
+          setBillImagePreview(null);
+        }
+      }}>
+        <DialogContent className="glass">
+          <DialogHeader>
+            <DialogTitle>Xác nhận thanh toán</DialogTitle>
+            <DialogDescription>
+              Vui lòng tải lên hình ảnh bill/biên lai thanh toán để Admin xác nhận.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Hình ảnh bill thanh toán *</Label>
+              <div className="mt-2">
+                {billImagePreview ? (
+                  <div className="relative inline-block">
+                    <img
+                      src={billImagePreview}
+                      alt="Bill preview"
+                      className="w-full max-h-64 object-contain rounded-lg border"
+                    />
+                    <Button
+                      size="icon"
+                      variant="destructive"
+                      className="absolute -top-2 -right-2 w-6 h-6"
+                      onClick={() => {
+                        setBillImage(null);
+                        setBillImagePreview(null);
+                      }}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center gap-2 cursor-pointer text-muted-foreground hover:text-foreground transition-colors">
+                    <div className="w-full h-32 border-2 border-dashed rounded-lg flex flex-col items-center justify-center gap-2">
+                      <ImagePlus className="w-8 h-8" />
+                      <span className="text-sm">Nhấn để tải ảnh bill</span>
+                    </div>
+                    <input
+                      ref={billImageInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleBillImageSelect}
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Lưu ý: Bill sẽ được gửi đến Admin để xác nhận giao dịch. Vui lòng chụp rõ nét thông tin chuyển khoản.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowBillUploadDialog(false);
+                  setSelectedPaymentBoxId(null);
+                  setBillImage(null);
+                  setBillImagePreview(null);
+                }}
+                className="rounded-xl"
+                disabled={isUploadingBill}
+              >
+                Hủy
+              </Button>
+              <Button
+                onClick={handleBuyerPaid}
+                disabled={!billImage || isUploadingBill}
+                className="rounded-xl gradient-primary"
+              >
+                {isUploadingBill ? 'Đang gửi...' : 'Gửi xác nhận'}
               </Button>
             </div>
           </div>

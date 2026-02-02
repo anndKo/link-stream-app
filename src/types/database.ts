@@ -188,6 +188,7 @@ export interface PaymentBox {
   seller_bank_account?: string | null;
   seller_bank_name?: string | null;
   seller_confirmed_at?: string | null;
+  bill_image_url?: string | null;
   sender_profile?: Profile;
   receiver_profile?: Profile;
 }

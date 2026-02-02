@@ -70,6 +70,11 @@ const Admin = () => {
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
   const [banReason, setBanReason] = useState('');
   
+  // Bill viewing dialog
+  const [showBillDialog, setShowBillDialog] = useState(false);
+  const [selectedBillUrl, setSelectedBillUrl] = useState<string | null>(null);
+  const [selectedBillBox, setSelectedBillBox] = useState<PaymentBox | null>(null);
+  
   // Admin payment box settings
   const [adminSettings, setAdminSettings] = useState<AdminPaymentBoxSettings | null>(null);
   const [paymentBoxImage, setPaymentBoxImage] = useState<File | null>(null);
@@ -964,6 +969,7 @@ const Admin = () => {
                     <TableHead>Người bán</TableHead>
                     <TableHead>Người mua</TableHead>
                     <TableHead>Thời gian TT</TableHead>
+                    <TableHead>Bill</TableHead>
                     <TableHead>Trạng thái</TableHead>
                     <TableHead>Ngày tạo</TableHead>
                     <TableHead className="text-right">Hành động</TableHead>
@@ -1006,6 +1012,25 @@ const Admin = () => {
                         )}
                       </TableCell>
                       <TableCell>
+                        {box.bill_image_url ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-blue-500 hover:text-blue-600 gap-1"
+                            onClick={() => {
+                              setSelectedBillUrl(box.bill_image_url || null);
+                              setSelectedBillBox(box);
+                              setShowBillDialog(true);
+                            }}
+                          >
+                            <ImagePlus className="w-4 h-4" />
+                            Xem bill
+                          </Button>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
                         {getStatusBadge(box.status)}
                       </TableCell>
                       <TableCell>
@@ -1038,7 +1063,7 @@ const Admin = () => {
                               <RefreshCw className="w-4 h-4" />
                             </Button>
                           )}
-                          {(box as any).seller_confirmed_at && box.status !== 'completed' && (
+                          {box.seller_confirmed_at && box.status !== 'completed' && (
                             <Button
                               variant="ghost"
                               size="icon"
@@ -1168,6 +1193,57 @@ const Admin = () => {
                 Xóa vĩnh viễn
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bill View Dialog */}
+      <Dialog open={showBillDialog} onOpenChange={setShowBillDialog}>
+        <DialogContent className="glass max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Bill thanh toán</DialogTitle>
+            <DialogDescription>
+              {selectedBillBox && (
+                <span>
+                  Người mua: {selectedBillBox.receiver_profile?.display_name || 'N/A'} → 
+                  Người bán: {selectedBillBox.sender_profile?.display_name || 'N/A'}
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {selectedBillUrl ? (
+              <img
+                src={selectedBillUrl}
+                alt="Bill thanh toán"
+                className="w-full max-h-[60vh] object-contain rounded-lg border"
+              />
+            ) : (
+              <p className="text-center text-muted-foreground py-8">
+                Không có hình ảnh bill
+              </p>
+            )}
+            {selectedBillBox?.status === 'buyer_paid' && (
+              <div className="flex gap-2 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowBillDialog(false)}
+                  className="rounded-xl"
+                >
+                  Đóng
+                </Button>
+                <Button
+                  onClick={() => {
+                    handleConfirmPaymentBox(selectedBillBox.id);
+                    setShowBillDialog(false);
+                  }}
+                  className="rounded-xl gradient-primary"
+                >
+                  <Check className="w-4 h-4 mr-2" />
+                  Xác nhận thanh toán
+                </Button>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
