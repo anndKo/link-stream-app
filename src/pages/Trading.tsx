@@ -98,6 +98,7 @@ interface PaymentBox {
   seller_bank_name?: string | null;
   seller_confirmed_at?: string | null;
   bill_image_url?: string | null;
+  sender_role?: 'buyer' | 'seller';
 }
 
 const Trading = () => {
@@ -158,6 +159,9 @@ const Trading = () => {
   const [billImage, setBillImage] = useState<File | null>(null);
   const [billImagePreview, setBillImagePreview] = useState<string | null>(null);
   const [isUploadingBill, setIsUploadingBill] = useState(false);
+  
+  // Role selection for payment box
+  const [selectedRole, setSelectedRole] = useState<'buyer' | 'seller'>('seller');
   const billImageInputRef = useRef<HTMLInputElement>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -668,7 +672,8 @@ const Trading = () => {
         .insert({
           sender_id: user.id,
           receiver_id: selectedConversation,
-          status: 'pending'
+          status: 'pending',
+          sender_role: selectedRole
         })
         .select()
         .single();
@@ -681,9 +686,10 @@ const Trading = () => {
 
       toast({
         title: 'Đã gửi yêu cầu giao dịch',
-        description: 'Đang chờ người mua xác nhận.'
+        description: selectedRole === 'seller' ? 'Đang chờ người mua xác nhận.' : 'Đang chờ người bán xác nhận.'
       });
       setShowPaymentBoxDialog(false);
+      setSelectedRole('seller');
     } catch (error) {
       console.error('Error sending payment box:', error);
       toast({
@@ -705,13 +711,14 @@ const Trading = () => {
     if (!selectedPaymentBoxId || !paymentDuration) return;
 
     try {
-      let durationDays: number;
+      let durationDays: number | null = null;
       switch (paymentDuration) {
         case '24h': durationDays = 1; break;
         case '3days': durationDays = 3; break;
         case '7days': durationDays = 7; break;
         case '1month': durationDays = 30; break;
         case 'custom': durationDays = parseInt(customDays) || 7; break;
+        case 'no_time': durationDays = null; break;
         default: durationDays = 7;
       }
       
@@ -734,7 +741,7 @@ const Trading = () => {
 
       toast({
         title: 'Đã xác nhận thời gian giao dịch',
-        description: 'Vui lòng thanh toán theo hướng dẫn.'
+        description: paymentDuration === 'no_time' ? 'Không giới hạn thời gian.' : 'Vui lòng thanh toán theo hướng dẫn.'
       });
       
       setShowConfirmDurationDialog(false);
@@ -1018,32 +1025,46 @@ const Trading = () => {
     }
   };
 
-  // Sender cancels pending request
+  // Cancel payment box - seller or sender can cancel
   const handleCancelPaymentBox = async (paymentBoxId: string) => {
     if (!user) return;
 
     try {
+      // Find the box to determine if we're the seller
+      const box = paymentBoxes.find(b => b.id === paymentBoxId);
+      if (!box) return;
+
+      const senderRole = box.sender_role || 'seller';
+      const isSeller = senderRole === 'seller' ? box.sender_id === user.id : box.receiver_id === user.id;
+      
+      // If seller cancels after buyer paid, mark seller_cancelled_at
+      const updateData: Record<string, unknown> = { status: 'cancelled' };
+      if (isSeller && box.status === 'admin_confirmed') {
+        updateData.seller_cancelled_at = new Date().toISOString();
+      }
+
       const { error } = await supabase
         .from('payment_boxes')
-        .update({ status: 'cancelled' })
-        .eq('id', paymentBoxId)
-        .eq('sender_id', user.id);
+        .update(updateData)
+        .eq('id', paymentBoxId);
 
       if (error) throw error;
 
-      setPaymentBoxes(prev => prev.map(box => 
-        box.id === paymentBoxId ? { ...box, status: 'cancelled' as PaymentBoxStatus } : box
+      setPaymentBoxes(prev => prev.map(b => 
+        b.id === paymentBoxId 
+          ? { ...b, ...updateData, status: 'cancelled' as PaymentBoxStatus } 
+          : b
       ));
 
       toast({
-        title: 'Đã hủy yêu cầu',
-        description: 'Bạn đã hủy yêu cầu giao dịch.'
+        title: 'Đã hủy giao dịch',
+        description: 'Giao dịch đã bị hủy.'
       });
     } catch (error) {
       console.error('Error cancelling payment box:', error);
       toast({
         title: 'Lỗi',
-        description: 'Không thể hủy yêu cầu giao dịch',
+        description: 'Không thể hủy giao dịch',
         variant: 'destructive'
       });
     }
@@ -1116,11 +1137,16 @@ const Trading = () => {
 
   // Render payment box in chat
   const renderPaymentBox = (box: PaymentBox) => {
-    const isSender = box.sender_id === user?.id; // Sender = Seller
-    const isReceiver = box.receiver_id === user?.id; // Receiver = Buyer
+    // Determine roles based on sender_role
+    const senderRole = box.sender_role || 'seller';
+    const isSeller = senderRole === 'seller' ? box.sender_id === user?.id : box.receiver_id === user?.id;
+    const isBuyer = senderRole === 'seller' ? box.receiver_id === user?.id : box.sender_id === user?.id;
     const remainingDays = getRemainingDays(box);
     const expired = isTransactionExpired(box);
-    const hasDurationSelected = !!box.confirmed_at && !!box.payment_duration_days;
+    const hasDurationSelected = !!box.confirmed_at;
+    const hasNoTimeLimit = box.payment_duration === 'no_time';
+    const isSender = box.sender_id === user?.id;
+    const isReceiver = box.receiver_id === user?.id;
 
     const getStatusMessage = () => {
       if (box.status === 'completed') {
@@ -1141,16 +1167,20 @@ const Trading = () => {
             return '📋 Đã chọn thời gian giao dịch - Vui lòng thanh toán';
           }
           return isSender 
-            ? 'Bạn đã gửi yêu cầu giao dịch. Đang chờ người mua xác nhận.' 
-            : 'Người bán muốn bắt đầu giao dịch với bạn.';
+            ? `Bạn đã gửi yêu cầu giao dịch. Đang chờ ${senderRole === 'seller' ? 'người mua' : 'người bán'} xác nhận.` 
+            : `${senderRole === 'seller' ? 'Người bán' : 'Người mua'} muốn bắt đầu giao dịch với bạn.`;
         case 'buyer_paid':
           return '💳 Người mua đã thanh toán - Đang chờ Admin xác nhận';
         case 'admin_confirmed':
           return '✅ Bắt đầu giao dịch';
         case 'cancelled':
+          // If seller cancelled but buyer already paid, show different message
+          if (box.seller_cancelled_at) {
+            return '❌ Người bán đã hủy giao dịch.';
+          }
           return 'Giao dịch đã bị hủy.';
         case 'refund_requested':
-          return isReceiver
+          return isBuyer
             ? '🔄 Bạn đã yêu cầu hoàn tiền. Đang chờ Admin duyệt.'
             : '🔄 Người mua đã yêu cầu hoàn tiền. Đang chờ Admin duyệt.';
         case 'refunded':
@@ -1183,6 +1213,12 @@ const Trading = () => {
       }
     };
 
+    // Check if buyer can request refund (after payment confirmed or seller cancelled)
+    const canBuyerRefund = isBuyer && (
+      box.status === 'admin_confirmed' || 
+      (box.status === 'cancelled' && box.seller_cancelled_at)
+    );
+
     return (
       <div key={box.id} className="flex justify-center my-3">
         <div className={`w-full max-w-[90%] rounded-lg p-4 border-2 ${getBorderColor()}`}>
@@ -1192,12 +1228,12 @@ const Trading = () => {
               <span className="font-medium">Hộp thanh toán</span>
             </div>
             {/* Show role badge */}
-            {isSender && (
+            {isSeller && (
               <span className="text-xs px-2 py-1 rounded-full bg-primary/20 text-primary font-medium">
                 👤 Người bán
               </span>
             )}
-            {isReceiver && (
+            {isBuyer && (
               <span className="text-xs px-2 py-1 rounded-full bg-blue-500/20 text-blue-500 font-medium">
                 🛒 Người mua
               </span>
@@ -1208,16 +1244,24 @@ const Trading = () => {
             {getStatusMessage()}
           </p>
 
-          {/* Show remaining time for active transactions (admin confirmed but not completed) */}
-          {box.status === 'admin_confirmed' && remainingDays !== null && !box.seller_completed_at && (
+          {/* Show remaining time for active transactions (admin confirmed but not completed) - only if has time limit */}
+          {box.status === 'admin_confirmed' && remainingDays !== null && !box.seller_completed_at && !hasNoTimeLimit && (
             <div className="flex items-center gap-2 text-sm mb-3 p-2 rounded bg-secondary/50">
               <Timer className="w-4 h-4" />
               <span>Thời gian giao dịch còn lại: <strong>{remainingDays} ngày</strong></span>
             </div>
           )}
 
-          {/* Show remaining time after seller completed (for both buyer and seller) */}
-          {box.seller_completed_at && !box.buyer_confirmed_at && remainingDays !== null && (
+          {/* Show no time limit message */}
+          {box.status === 'admin_confirmed' && hasNoTimeLimit && !box.seller_completed_at && (
+            <div className="flex items-center gap-2 text-sm mb-3 p-2 rounded bg-secondary/50">
+              <Timer className="w-4 h-4" />
+              <span>Không giới hạn thời gian giao dịch</span>
+            </div>
+          )}
+
+          {/* Show remaining time after seller completed (for both buyer and seller) - only if has time limit */}
+          {box.seller_completed_at && !box.buyer_confirmed_at && !hasNoTimeLimit && remainingDays !== null && (
             <div className={`flex items-center gap-2 text-sm mb-3 p-2 rounded ${expired ? 'bg-orange-500/20' : 'bg-secondary/50'}`}>
               <Timer className="w-4 h-4" />
               {expired ? (
@@ -1228,7 +1272,7 @@ const Trading = () => {
             </div>
           )}
 
-          {/* Pending: Buyer sees confirm/reject buttons */}
+          {/* Pending: Buyer/Receiver sees confirm/reject buttons */}
           {box.status === 'pending' && isReceiver && !hasDurationSelected && (
             <div className="flex gap-2">
               <Button
@@ -1252,8 +1296,8 @@ const Trading = () => {
             </div>
           )}
 
-          {/* After duration selected: Show payment box + pay/cancel buttons */}
-          {box.status === 'pending' && isReceiver && hasDurationSelected && (
+          {/* After duration selected: Show payment box + pay/cancel buttons (for buyer) */}
+          {box.status === 'pending' && isBuyer && hasDurationSelected && (
             <div className="space-y-3">
               {/* Show admin payment box */}
               {adminPaymentSettings && (
@@ -1299,8 +1343,8 @@ const Trading = () => {
             </div>
           )}
 
-          {/* Pending: Seller can cancel */}
-          {box.status === 'pending' && isSender && (
+          {/* Pending: Sender can cancel */}
+          {box.status === 'pending' && isSender && !hasDurationSelected && (
             <Button
               size="sm"
               variant="outline"
@@ -1316,7 +1360,7 @@ const Trading = () => {
           {box.status === 'admin_confirmed' && !box.seller_completed_at && (
             <div className="space-y-2">
               {/* Seller sees: Complete button or Cancel */}
-              {isSender && (
+              {isSeller && (
                 <div className="flex gap-2">
                   <Button
                     size="sm"
@@ -1339,8 +1383,8 @@ const Trading = () => {
                 </div>
               )}
               
-              {/* Buyer sees: Waiting status + Refund/Cancel option */}
-              {isReceiver && (
+              {/* Buyer sees: Waiting status + Refund ONLY (no cancel) */}
+              {isBuyer && (
                 <div className="space-y-2">
                   <p className="text-sm text-muted-foreground flex items-center gap-2">
                     <Clock className="w-4 h-4" />
@@ -1359,27 +1403,37 @@ const Trading = () => {
                       <RefreshCw className="w-4 h-4" />
                       Hoàn tiền
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleCancelPaymentBox(box.id)}
-                      className="gap-1"
-                    >
-                      <XCircle className="w-4 h-4" />
-                      Hủy
-                    </Button>
                   </div>
                 </div>
               )}
             </div>
           )}
 
-          {/* Seller completed: Waiting for buyer confirmation */}
-          {box.seller_completed_at && !box.buyer_confirmed_at && box.status !== 'refund_requested' && box.status !== 'refunded' && (
+          {/* Cancelled by seller: Buyer can still request refund */}
+          {box.status === 'cancelled' && box.seller_cancelled_at && isBuyer && (
             <div className="space-y-2">
-              {isReceiver && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setSelectedPaymentBoxId(box.id);
+                  setShowRefundDialog(true);
+                }}
+                className="gap-1"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Yêu cầu hoàn tiền
+              </Button>
+            </div>
+          )}
+
+          {/* Seller completed: Waiting for buyer confirmation */}
+          {box.seller_completed_at && !box.buyer_confirmed_at && box.status !== 'refund_requested' && box.status !== 'refunded' && box.status !== 'cancelled' && (
+            <div className="space-y-2">
+              {isBuyer && (
                 <>
-                  {expired ? (
+                  {/* No time limit: Buyer can confirm immediately */}
+                  {hasNoTimeLimit ? (
                     <Button
                       size="sm"
                       variant="default"
@@ -1387,21 +1441,79 @@ const Trading = () => {
                       className="gap-1"
                     >
                       <CheckCircle className="w-4 h-4" />
-                      Xác nhận nhận hàng
+                      Xác nhận đã hoàn thành
                     </Button>
                   ) : (
-                    <p className="text-sm text-muted-foreground flex items-center gap-2">
-                      <Timer className="w-4 h-4" />
-                      Vui lòng xác nhận khi đã nhận hàng (hoặc đợi hết thời gian)
-                    </p>
+                    <>
+                      {expired ? (
+                        <Button
+                          size="sm"
+                          variant="default"
+                          onClick={() => handleBuyerConfirmSuccess(box.id)}
+                          className="gap-1"
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                          Xác nhận nhận hàng
+                        </Button>
+                      ) : (
+                        <div className="space-y-2">
+                          <p className="text-sm text-orange-500 flex items-center gap-2">
+                            <Timer className="w-4 h-4" />
+                            Còn {remainingDays} ngày nữa mới có thể xác nhận
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Vui lòng đợi hết thời gian giao dịch hoặc liên hệ Admin nếu cần xác nhận sớm.
+                          </p>
+                        </div>
+                      )}
+                    </>
                   )}
                 </>
               )}
-              {isSender && (
-                <p className="text-sm text-muted-foreground flex items-center gap-2">
-                  <Clock className="w-4 h-4" />
-                  Đang chờ người mua xác nhận nhận hàng
-                </p>
+              {isSeller && (
+                <>
+                  {/* No time limit: Seller can receive money after buyer confirms */}
+                  {hasNoTimeLimit ? (
+                    <p className="text-sm text-muted-foreground flex items-center gap-2">
+                      <Clock className="w-4 h-4" />
+                      Đang chờ người mua xác nhận nhận hàng
+                    </p>
+                  ) : (
+                    <>
+                      {expired ? (
+                        <div className="space-y-2">
+                          <p className="text-sm text-muted-foreground flex items-center gap-2">
+                            <Clock className="w-4 h-4" />
+                            Đang chờ người mua xác nhận nhận hàng
+                          </p>
+                          <Button
+                            size="sm"
+                            variant="default"
+                            onClick={() => {
+                              setSelectedPaymentBoxId(box.id);
+                              setShowReceiveMoneyDialog(true);
+                            }}
+                            className="gap-1"
+                          >
+                            <CreditCard className="w-4 h-4" />
+                            Nhận tiền
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <p className="text-sm text-muted-foreground flex items-center gap-2">
+                            <Clock className="w-4 h-4" />
+                            Đang chờ người mua xác nhận nhận hàng
+                          </p>
+                          <p className="text-sm text-orange-500 flex items-center gap-2">
+                            <Timer className="w-4 h-4" />
+                            Còn {remainingDays} ngày nữa mới có thể nhận tiền
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -1409,7 +1521,7 @@ const Trading = () => {
           {/* Buyer confirmed: Seller can request money */}
           {box.buyer_confirmed_at && !box.seller_confirmed_at && box.status !== 'completed' && (
             <div className="space-y-2">
-              {isSender && (
+              {isSeller && (
                 <Button
                   size="sm"
                   variant="default"
@@ -1423,7 +1535,7 @@ const Trading = () => {
                   Nhận tiền
                 </Button>
               )}
-              {isReceiver && (
+              {isBuyer && (
                 <p className="text-sm text-muted-foreground flex items-center gap-2">
                   <Clock className="w-4 h-4" />
                   Đang chờ người bán yêu cầu nhận tiền
@@ -2326,28 +2438,53 @@ const Trading = () => {
       </Dialog>
 
       {/* Payment Box Dialog */}
-      <Dialog open={showPaymentBoxDialog} onOpenChange={setShowPaymentBoxDialog}>
+      <Dialog open={showPaymentBoxDialog} onOpenChange={(open) => {
+        setShowPaymentBoxDialog(open);
+        if (!open) setSelectedRole('seller');
+      }}>
         <DialogContent className="glass">
           <DialogHeader>
             <DialogTitle>Gửi yêu cầu giao dịch</DialogTitle>
             <DialogDescription>
-              Bạn sẽ gửi yêu cầu giao dịch đến người mua. Họ sẽ cần xác nhận thanh toán.
+              Chọn vai trò của bạn trong giao dịch này.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex gap-2 justify-end">
-            <Button
-              variant="outline"
-              onClick={() => setShowPaymentBoxDialog(false)}
-              className="rounded-xl"
-            >
-              Hủy
-            </Button>
-            <Button
-              onClick={handleSendPaymentBox}
-              className="rounded-xl gradient-primary"
-            >
-              Gửi yêu cầu
-            </Button>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Bạn là</Label>
+              <Select value={selectedRole} onValueChange={(v: 'buyer' | 'seller') => setSelectedRole(v)}>
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Chọn vai trò" />
+                </SelectTrigger>
+                <SelectContent className="glass">
+                  <SelectItem value="seller">👤 Người bán</SelectItem>
+                  <SelectItem value="buyer">🛒 Người mua</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {selectedRole === 'seller' 
+                ? 'Bạn sẽ gửi yêu cầu giao dịch đến người mua. Họ sẽ cần xác nhận và thanh toán.'
+                : 'Bạn sẽ gửi yêu cầu giao dịch đến người bán. Bạn sẽ cần thanh toán sau khi họ xác nhận.'}
+            </p>
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowPaymentBoxDialog(false);
+                  setSelectedRole('seller');
+                }}
+                className="rounded-xl"
+              >
+                Hủy
+              </Button>
+              <Button
+                onClick={handleSendPaymentBox}
+                className="rounded-xl gradient-primary"
+              >
+                Gửi yêu cầu
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -2369,6 +2506,7 @@ const Trading = () => {
                   <SelectValue placeholder="Chọn thời gian" />
                 </SelectTrigger>
                 <SelectContent className="glass">
+                  <SelectItem value="no_time">Không giới hạn thời gian</SelectItem>
                   <SelectItem value="24h">24 giờ</SelectItem>
                   <SelectItem value="3days">3 ngày</SelectItem>
                   <SelectItem value="7days">7 ngày</SelectItem>
@@ -2376,6 +2514,11 @@ const Trading = () => {
                   <SelectItem value="custom">Khác</SelectItem>
                 </SelectContent>
               </Select>
+              {paymentDuration === 'no_time' && (
+                <p className="text-xs text-muted-foreground">
+                  Không giới hạn thời gian: Người mua có thể xác nhận bất kỳ lúc nào sau khi người bán bàn giao.
+                </p>
+              )}
             </div>
             {paymentDuration === 'custom' && (
               <div className="space-y-2">
@@ -2432,6 +2575,7 @@ const Trading = () => {
                   <SelectValue placeholder="Chọn thời gian" />
                 </SelectTrigger>
                 <SelectContent className="glass">
+                  <SelectItem value="no_time">Không giới hạn thời gian</SelectItem>
                   <SelectItem value="24h">24 giờ</SelectItem>
                   <SelectItem value="3days">3 ngày</SelectItem>
                   <SelectItem value="7days">7 ngày</SelectItem>
@@ -2439,6 +2583,11 @@ const Trading = () => {
                   <SelectItem value="custom">Khác</SelectItem>
                 </SelectContent>
               </Select>
+              {paymentDuration === 'no_time' && (
+                <p className="text-xs text-muted-foreground">
+                  Không giới hạn thời gian: Người mua có thể xác nhận bất kỳ lúc nào sau khi người bán bàn giao.
+                </p>
+              )}
             </div>
             {paymentDuration === 'custom' && (
               <div className="space-y-2">
