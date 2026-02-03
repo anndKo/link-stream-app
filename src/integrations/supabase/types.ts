@@ -327,6 +327,7 @@ export type Database = {
           seller_completed_at: string | null
           seller_confirmed_at: string | null
           sender_id: string
+          sender_role: string | null
           status: string
           transaction_fee: string | null
           transaction_start_at: string | null
@@ -355,6 +356,7 @@ export type Database = {
           seller_completed_at?: string | null
           seller_confirmed_at?: string | null
           sender_id: string
+          sender_role?: string | null
           status?: string
           transaction_fee?: string | null
           transaction_start_at?: string | null
@@ -383,6 +385,7 @@ export type Database = {
           seller_completed_at?: string | null
           seller_confirmed_at?: string | null
           sender_id?: string
+          sender_role?: string | null
           status?: string
           transaction_fee?: string | null
           transaction_start_at?: string | null
