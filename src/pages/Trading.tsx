@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { formatDistanceToNow, differenceInDays, addDays } from 'date-fns';
+import { formatDistanceToNow, differenceInDays, differenceInSeconds, addDays } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { Link } from 'react-router-dom';
 import { ImageLightbox } from '@/components/ui/image-lightbox';
@@ -99,6 +99,11 @@ interface PaymentBox {
   seller_confirmed_at?: string | null;
   bill_image_url?: string | null;
   sender_role?: 'buyer' | 'seller';
+  seller_rejection_reason?: string | null;
+  admin_message?: string | null;
+  buyer_reply?: string | null;
+  admin_message_at?: string | null;
+  buyer_reply_at?: string | null;
 }
 
 const Trading = () => {
@@ -162,6 +167,20 @@ const Trading = () => {
   
   // Role selection for payment box
   const [selectedRole, setSelectedRole] = useState<'buyer' | 'seller'>('seller');
+  
+  // Seller rejection dialog
+  const [showRejectRefundDialog, setShowRejectRefundDialog] = useState(false);
+  const [sellerRejectionReason, setSellerRejectionReason] = useState('');
+  
+  // View rejection reason dialog
+  const [showRejectionReasonDialog, setShowRejectionReasonDialog] = useState(false);
+  const [viewingRejectionReason, setViewingRejectionReason] = useState('');
+  
+  // Admin message dialog for buyer
+  const [showAdminMessageDialog, setShowAdminMessageDialog] = useState(false);
+  const [adminMessageToView, setAdminMessageToView] = useState('');
+  const [buyerReplyContent, setBuyerReplyContent] = useState('');
+  
   const billImageInputRef = useRef<HTMLInputElement>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -1070,6 +1089,84 @@ const Trading = () => {
     }
   };
 
+  // Seller rejects refund request
+  const handleSellerRejectRefund = async () => {
+    if (!selectedPaymentBoxId || !sellerRejectionReason.trim()) return;
+
+    try {
+      const { error } = await supabase
+        .from('payment_boxes')
+        .update({ 
+          seller_rejection_reason: sellerRejectionReason
+        })
+        .eq('id', selectedPaymentBoxId);
+
+      if (error) throw error;
+
+      setPaymentBoxes(prev => prev.map(box => 
+        box.id === selectedPaymentBoxId 
+          ? { ...box, seller_rejection_reason: sellerRejectionReason } 
+          : box
+      ));
+
+      toast({
+        title: 'Đã từ chối yêu cầu hoàn tiền',
+        description: 'Lý do đã được gửi đến Admin.'
+      });
+      
+      setShowRejectRefundDialog(false);
+      setSelectedPaymentBoxId(null);
+      setSellerRejectionReason('');
+    } catch (error) {
+      console.error('Error rejecting refund:', error);
+      toast({
+        title: 'Lỗi',
+        description: 'Không thể từ chối yêu cầu hoàn tiền',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // Buyer sends reply to admin
+  const handleBuyerReply = async () => {
+    if (!selectedPaymentBoxId || !buyerReplyContent.trim()) return;
+
+    try {
+      const { error } = await supabase
+        .from('payment_boxes')
+        .update({ 
+          buyer_reply: buyerReplyContent,
+          buyer_reply_at: new Date().toISOString()
+        })
+        .eq('id', selectedPaymentBoxId);
+
+      if (error) throw error;
+
+      setPaymentBoxes(prev => prev.map(box => 
+        box.id === selectedPaymentBoxId 
+          ? { ...box, buyer_reply: buyerReplyContent, buyer_reply_at: new Date().toISOString() } 
+          : box
+      ));
+
+      toast({
+        title: 'Đã gửi phản hồi',
+        description: 'Phản hồi đã được gửi đến Admin.'
+      });
+      
+      setShowAdminMessageDialog(false);
+      setSelectedPaymentBoxId(null);
+      setBuyerReplyContent('');
+      setAdminMessageToView('');
+    } catch (error) {
+      console.error('Error sending buyer reply:', error);
+      toast({
+        title: 'Lỗi',
+        description: 'Không thể gửi phản hồi',
+        variant: 'destructive'
+      });
+    }
+  };
+
   // Fetch payment boxes for current conversation
   useEffect(() => {
     if (!user || !selectedConversation) {
@@ -1122,7 +1219,7 @@ const Trading = () => {
     };
   }, [user, selectedConversation]);
 
-  // Calculate remaining transaction days
+  // Calculate remaining transaction time
   const getRemainingDays = (box: PaymentBox): number | null => {
     if (!box.transaction_start_at || !box.payment_duration_days) return null;
     const endDate = addDays(new Date(box.transaction_start_at), box.payment_duration_days);
@@ -1130,8 +1227,29 @@ const Trading = () => {
     return Math.max(0, remaining);
   };
 
+  // Calculate remaining time in seconds
+  const getRemainingSeconds = (box: PaymentBox): number | null => {
+    if (!box.transaction_start_at || !box.payment_duration_days) return null;
+    const endDate = addDays(new Date(box.transaction_start_at), box.payment_duration_days);
+    const remaining = differenceInSeconds(endDate, new Date());
+    return Math.max(0, remaining);
+  };
+
+  // Format remaining time as "X Giờ Y Phút Z Giây"
+  const formatRemainingTime = (totalSeconds: number): string => {
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    
+    if (days > 0) {
+      return `${days} Ngày ${hours} Giờ ${minutes} Phút ${seconds} Giây`;
+    }
+    return `${hours} Giờ ${minutes} Phút ${seconds} Giây`;
+  };
+
   const isTransactionExpired = (box: PaymentBox): boolean => {
-    const remaining = getRemainingDays(box);
+    const remaining = getRemainingSeconds(box);
     return remaining !== null && remaining <= 0;
   };
 
@@ -1142,6 +1260,8 @@ const Trading = () => {
     const isSeller = senderRole === 'seller' ? box.sender_id === user?.id : box.receiver_id === user?.id;
     const isBuyer = senderRole === 'seller' ? box.receiver_id === user?.id : box.sender_id === user?.id;
     const remainingDays = getRemainingDays(box);
+    const remainingSeconds = getRemainingSeconds(box);
+    const remainingTimeFormatted = remainingSeconds !== null ? formatRemainingTime(remainingSeconds) : null;
     const expired = isTransactionExpired(box);
     const hasDurationSelected = !!box.confirmed_at;
     const hasNoTimeLimit = box.payment_duration === 'no_time';
@@ -1245,10 +1365,10 @@ const Trading = () => {
           </p>
 
           {/* Show remaining time for active transactions (admin confirmed but not completed) - only if has time limit */}
-          {box.status === 'admin_confirmed' && remainingDays !== null && !box.seller_completed_at && !hasNoTimeLimit && (
+          {box.status === 'admin_confirmed' && remainingTimeFormatted !== null && !box.seller_completed_at && !hasNoTimeLimit && (
             <div className="flex items-center gap-2 text-sm mb-3 p-2 rounded bg-secondary/50">
               <Timer className="w-4 h-4" />
-              <span>Thời gian giao dịch còn lại: <strong>{remainingDays} ngày</strong></span>
+              <span>Thời gian còn lại: <strong>{remainingTimeFormatted}</strong></span>
             </div>
           )}
 
@@ -1261,14 +1381,77 @@ const Trading = () => {
           )}
 
           {/* Show remaining time after seller completed (for both buyer and seller) - only if has time limit */}
-          {box.seller_completed_at && !box.buyer_confirmed_at && !hasNoTimeLimit && remainingDays !== null && (
+          {box.seller_completed_at && !box.buyer_confirmed_at && !hasNoTimeLimit && remainingTimeFormatted !== null && (
             <div className={`flex items-center gap-2 text-sm mb-3 p-2 rounded ${expired ? 'bg-orange-500/20' : 'bg-secondary/50'}`}>
               <Timer className="w-4 h-4" />
               {expired ? (
                 <span className="text-orange-500 font-medium">⏰ Đã hết thời gian giao dịch</span>
               ) : (
-                <span>Thời gian còn lại: <strong>{remainingDays} ngày</strong></span>
+                <span>Thời gian còn lại: <strong>{remainingTimeFormatted}</strong></span>
               )}
+            </div>
+          )}
+
+          {/* Show admin message to buyer if exists */}
+          {box.admin_message && isBuyer && (
+            <div className="mb-3 p-2 rounded bg-blue-500/10 border border-blue-500/30">
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className="text-sm font-medium text-blue-500">📩 Tin nhắn từ Admin</span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setSelectedPaymentBoxId(box.id);
+                    setAdminMessageToView(box.admin_message || '');
+                    setShowAdminMessageDialog(true);
+                  }}
+                  className="h-6 text-xs text-blue-500"
+                >
+                  Phản hồi
+                </Button>
+              </div>
+              <p className="text-sm">{box.admin_message}</p>
+              {box.buyer_reply && (
+                <div className="mt-2 pt-2 border-t border-blue-500/20">
+                  <span className="text-xs text-muted-foreground">Phản hồi của bạn:</span>
+                  <p className="text-sm">{box.buyer_reply}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Show seller rejection reason indicator for refund requests */}
+          {box.status === 'refund_requested' && box.seller_rejection_reason && (
+            <div 
+              className="mb-3 p-2 rounded bg-red-500/10 border border-red-500/30 cursor-pointer"
+              onClick={() => {
+                setViewingRejectionReason(box.seller_rejection_reason || '');
+                setShowRejectionReasonDialog(true);
+              }}
+            >
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+                <span className="text-sm font-medium text-red-500">Người bán đã từ chối</span>
+                <span className="text-xs text-muted-foreground">(Bấm để xem lý do)</span>
+              </div>
+            </div>
+          )}
+
+          {/* Seller sees reject button when there's a refund request */}
+          {box.status === 'refund_requested' && isSeller && !box.seller_rejection_reason && (
+            <div className="mb-3">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setSelectedPaymentBoxId(box.id);
+                  setShowRejectRefundDialog(true);
+                }}
+                className="gap-1 border-red-500 text-red-500 hover:bg-red-500/10"
+              >
+                <XCircle className="w-4 h-4" />
+                Từ chối hoàn tiền
+              </Button>
             </div>
           )}
 
@@ -1459,7 +1642,7 @@ const Trading = () => {
                         <div className="space-y-2">
                           <p className="text-sm text-orange-500 flex items-center gap-2">
                             <Timer className="w-4 h-4" />
-                            Còn {remainingDays} ngày nữa mới có thể xác nhận
+                            Còn {remainingTimeFormatted} nữa mới có thể xác nhận
                           </p>
                           <p className="text-xs text-muted-foreground">
                             Vui lòng đợi hết thời gian giao dịch hoặc liên hệ Admin nếu cần xác nhận sớm.
@@ -1507,7 +1690,7 @@ const Trading = () => {
                           </p>
                           <p className="text-sm text-orange-500 flex items-center gap-2">
                             <Timer className="w-4 h-4" />
-                            Còn {remainingDays} ngày nữa mới có thể nhận tiền
+                            Còn {remainingTimeFormatted} nữa mới có thể nhận tiền
                           </p>
                         </div>
                       )}
@@ -2822,6 +3005,118 @@ const Trading = () => {
                 className="rounded-xl gradient-primary"
               >
                 {isUploadingBill ? 'Đang gửi...' : 'Gửi xác nhận'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Seller Reject Refund Dialog */}
+      <Dialog open={showRejectRefundDialog} onOpenChange={setShowRejectRefundDialog}>
+        <DialogContent className="glass">
+          <DialogHeader>
+            <DialogTitle>Từ chối yêu cầu hoàn tiền</DialogTitle>
+            <DialogDescription>
+              Vui lòng nhập lý do từ chối. Lý do sẽ được gửi đến Admin để xem xét.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Lý do từ chối *</Label>
+              <Textarea
+                value={sellerRejectionReason}
+                onChange={(e) => setSellerRejectionReason(e.target.value)}
+                placeholder="Nhập lý do bạn từ chối yêu cầu hoàn tiền..."
+                className="rounded-xl min-h-[100px]"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowRejectRefundDialog(false);
+                  setSelectedPaymentBoxId(null);
+                  setSellerRejectionReason('');
+                }}
+                className="rounded-xl"
+              >
+                Hủy
+              </Button>
+              <Button
+                onClick={handleSellerRejectRefund}
+                disabled={!sellerRejectionReason.trim()}
+                className="rounded-xl bg-red-500 hover:bg-red-600"
+              >
+                Gửi từ chối
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* View Rejection Reason Dialog */}
+      <Dialog open={showRejectionReasonDialog} onOpenChange={setShowRejectionReasonDialog}>
+        <DialogContent className="glass">
+          <DialogHeader>
+            <DialogTitle className="text-red-500">Lý do từ chối của người bán</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm whitespace-pre-wrap bg-secondary/50 p-4 rounded-lg">
+              {viewingRejectionReason}
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => setShowRejectionReasonDialog(false)}
+              className="w-full rounded-xl"
+            >
+              Đóng
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Admin Message & Buyer Reply Dialog */}
+      <Dialog open={showAdminMessageDialog} onOpenChange={setShowAdminMessageDialog}>
+        <DialogContent className="glass">
+          <DialogHeader>
+            <DialogTitle>Tin nhắn từ Admin</DialogTitle>
+            <DialogDescription>
+              Phản hồi tin nhắn này sẽ được gửi đến Admin.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="bg-secondary/50 p-4 rounded-lg">
+              <span className="text-xs text-muted-foreground">Admin viết:</span>
+              <p className="text-sm whitespace-pre-wrap mt-1">{adminMessageToView}</p>
+            </div>
+            <div className="space-y-2">
+              <Label>Phản hồi của bạn</Label>
+              <Textarea
+                value={buyerReplyContent}
+                onChange={(e) => setBuyerReplyContent(e.target.value)}
+                placeholder="Nhập nội dung phản hồi..."
+                className="rounded-xl min-h-[80px]"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowAdminMessageDialog(false);
+                  setSelectedPaymentBoxId(null);
+                  setBuyerReplyContent('');
+                  setAdminMessageToView('');
+                }}
+                className="rounded-xl"
+              >
+                Đóng
+              </Button>
+              <Button
+                onClick={handleBuyerReply}
+                disabled={!buyerReplyContent.trim()}
+                className="rounded-xl gradient-primary"
+              >
+                Gửi phản hồi
               </Button>
             </div>
           </div>

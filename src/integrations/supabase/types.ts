@@ -305,10 +305,14 @@ export type Database = {
       payment_boxes: {
         Row: {
           admin_confirmed_at: string | null
+          admin_message: string | null
+          admin_message_at: string | null
           bill_image_url: string | null
           buyer_bank_account: string | null
           buyer_bank_name: string | null
           buyer_confirmed_at: string | null
+          buyer_reply: string | null
+          buyer_reply_at: string | null
           confirmed_at: string | null
           content: string | null
           created_at: string
@@ -326,6 +330,7 @@ export type Database = {
           seller_cancelled_at: string | null
           seller_completed_at: string | null
           seller_confirmed_at: string | null
+          seller_rejection_reason: string | null
           sender_id: string
           sender_role: string | null
           status: string
@@ -334,10 +339,14 @@ export type Database = {
         }
         Insert: {
           admin_confirmed_at?: string | null
+          admin_message?: string | null
+          admin_message_at?: string | null
           bill_image_url?: string | null
           buyer_bank_account?: string | null
           buyer_bank_name?: string | null
           buyer_confirmed_at?: string | null
+          buyer_reply?: string | null
+          buyer_reply_at?: string | null
           confirmed_at?: string | null
           content?: string | null
           created_at?: string
@@ -355,6 +364,7 @@ export type Database = {
           seller_cancelled_at?: string | null
           seller_completed_at?: string | null
           seller_confirmed_at?: string | null
+          seller_rejection_reason?: string | null
           sender_id: string
           sender_role?: string | null
           status?: string
@@ -363,10 +373,14 @@ export type Database = {
         }
         Update: {
           admin_confirmed_at?: string | null
+          admin_message?: string | null
+          admin_message_at?: string | null
           bill_image_url?: string | null
           buyer_bank_account?: string | null
           buyer_bank_name?: string | null
           buyer_confirmed_at?: string | null
+          buyer_reply?: string | null
+          buyer_reply_at?: string | null
           confirmed_at?: string | null
           content?: string | null
           created_at?: string
@@ -384,6 +398,7 @@ export type Database = {
           seller_cancelled_at?: string | null
           seller_completed_at?: string | null
           seller_confirmed_at?: string | null
+          seller_rejection_reason?: string | null
           sender_id?: string
           sender_role?: string | null
           status?: string

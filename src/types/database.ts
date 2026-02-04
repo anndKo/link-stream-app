@@ -190,6 +190,11 @@ export interface PaymentBox {
   seller_confirmed_at?: string | null;
   bill_image_url?: string | null;
   sender_role?: 'buyer' | 'seller';
+  seller_rejection_reason?: string | null;
+  admin_message?: string | null;
+  buyer_reply?: string | null;
+  admin_message_at?: string | null;
+  buyer_reply_at?: string | null;
   sender_profile?: Profile;
   receiver_profile?: Profile;
 }

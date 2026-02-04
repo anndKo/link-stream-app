@@ -75,6 +75,19 @@ const Admin = () => {
   const [selectedBillUrl, setSelectedBillUrl] = useState<string | null>(null);
   const [selectedBillBox, setSelectedBillBox] = useState<PaymentBox | null>(null);
   
+  // Admin message to buyer dialog
+  const [showAdminMessageDialog, setShowAdminMessageDialog] = useState(false);
+  const [selectedBoxForMessage, setSelectedBoxForMessage] = useState<PaymentBox | null>(null);
+  const [adminMessageContent, setAdminMessageContent] = useState('');
+  
+  // View buyer reply dialog
+  const [showBuyerReplyDialog, setShowBuyerReplyDialog] = useState(false);
+  const [viewingBuyerReply, setViewingBuyerReply] = useState('');
+  
+  // View seller rejection reason dialog
+  const [showSellerRejectionDialog, setShowSellerRejectionDialog] = useState(false);
+  const [viewingSellerRejection, setViewingSellerRejection] = useState('');
+  
   // Admin payment box settings
   const [adminSettings, setAdminSettings] = useState<AdminPaymentBoxSettings | null>(null);
   const [paymentBoxImage, setPaymentBoxImage] = useState<File | null>(null);
@@ -475,6 +488,35 @@ const Admin = () => {
         return <Badge variant="default" className="bg-green-600">Hoàn tất</Badge>;
       default:
         return <Badge variant="secondary">{status}</Badge>;
+    }
+  };
+
+  // Admin sends message to buyer
+  const handleAdminSendMessage = async () => {
+    if (!selectedBoxForMessage || !adminMessageContent.trim()) return;
+
+    try {
+      const { error } = await supabase
+        .from('payment_boxes')
+        .update({ 
+          admin_message: adminMessageContent,
+          admin_message_at: new Date().toISOString()
+        })
+        .eq('id', selectedBoxForMessage.id);
+
+      if (error) throw error;
+
+      setPaymentBoxes(prev => prev.map(box => 
+        box.id === selectedBoxForMessage.id 
+          ? { ...box, admin_message: adminMessageContent, admin_message_at: new Date().toISOString() } 
+          : box
+      ));
+      toast({ title: 'Đã gửi tin nhắn đến người mua' });
+      setShowAdminMessageDialog(false);
+      setSelectedBoxForMessage(null);
+      setAdminMessageContent('');
+    } catch (error) {
+      toast({ title: 'Lỗi', description: 'Không thể gửi tin nhắn', variant: 'destructive' });
     }
   };
 
@@ -970,6 +1012,8 @@ const Admin = () => {
                     <TableHead>Người mua</TableHead>
                     <TableHead>Thời gian TT</TableHead>
                     <TableHead>Bill</TableHead>
+                    <TableHead>Từ chối</TableHead>
+                    <TableHead>Phản hồi</TableHead>
                     <TableHead>Trạng thái</TableHead>
                     <TableHead>Ngày tạo</TableHead>
                     <TableHead className="text-right">Hành động</TableHead>
@@ -1005,7 +1049,9 @@ const Admin = () => {
                           <span className="text-sm">
                             {box.payment_duration === 'custom' 
                               ? `${box.payment_duration_days} ngày` 
-                              : box.payment_duration}
+                              : box.payment_duration === 'no_time'
+                                ? 'Không TG'
+                                : box.payment_duration}
                           </span>
                         ) : (
                           <span className="text-muted-foreground">-</span>
@@ -1030,6 +1076,46 @@ const Admin = () => {
                           <span className="text-muted-foreground text-sm">-</span>
                         )}
                       </TableCell>
+                      {/* Seller rejection reason indicator */}
+                      <TableCell>
+                        {box.seller_rejection_reason ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-500 hover:text-red-600 gap-1"
+                            onClick={() => {
+                              setViewingSellerRejection(box.seller_rejection_reason || '');
+                              setShowSellerRejectionDialog(true);
+                            }}
+                          >
+                            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+                            Xem lý do
+                          </Button>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">-</span>
+                        )}
+                      </TableCell>
+                      {/* Buyer reply indicator */}
+                      <TableCell>
+                        {box.buyer_reply ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-blue-500 hover:text-blue-600 gap-1"
+                            onClick={() => {
+                              setViewingBuyerReply(box.buyer_reply || '');
+                              setShowBuyerReplyDialog(true);
+                            }}
+                          >
+                            <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+                            Xem phản hồi
+                          </Button>
+                        ) : box.admin_message ? (
+                          <span className="text-xs text-muted-foreground">Đã gửi TN</span>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">-</span>
+                        )}
+                      </TableCell>
                       <TableCell>
                         {getStatusBadge(box.status)}
                       </TableCell>
@@ -1041,6 +1127,22 @@ const Admin = () => {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
+                          {/* Message button for refund requests */}
+                          {box.status === 'refund_requested' && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="rounded-lg text-blue-500 hover:text-blue-600"
+                              onClick={() => {
+                                setSelectedBoxForMessage(box);
+                                setAdminMessageContent(box.admin_message || '');
+                                setShowAdminMessageDialog(true);
+                              }}
+                              title="Gửi tin nhắn cho người mua"
+                            >
+                              <MessageCircle className="w-4 h-4" />
+                            </Button>
+                          )}
                           {box.status === 'buyer_paid' && (
                             <Button
                               variant="ghost"
@@ -1244,6 +1346,119 @@ const Admin = () => {
                 </Button>
               </div>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Admin Message to Buyer Dialog */}
+      <Dialog open={showAdminMessageDialog} onOpenChange={setShowAdminMessageDialog}>
+        <DialogContent className="glass">
+          <DialogHeader>
+            <DialogTitle>Gửi tin nhắn đến người mua</DialogTitle>
+            <DialogDescription>
+              {selectedBoxForMessage && (
+                <span>
+                  Người mua: {selectedBoxForMessage.receiver_profile?.display_name || 'N/A'}
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Show refund reason */}
+            {selectedBoxForMessage?.refund_reason && (
+              <div className="bg-secondary/50 p-3 rounded-lg">
+                <span className="text-xs text-muted-foreground">Lý do hoàn tiền:</span>
+                <p className="text-sm mt-1">{selectedBoxForMessage.refund_reason}</p>
+              </div>
+            )}
+            
+            {/* Show seller rejection reason if exists */}
+            {selectedBoxForMessage?.seller_rejection_reason && (
+              <div className="bg-red-500/10 p-3 rounded-lg border border-red-500/30">
+                <span className="text-xs text-red-500 font-medium">Lý do từ chối của người bán:</span>
+                <p className="text-sm mt-1">{selectedBoxForMessage.seller_rejection_reason}</p>
+              </div>
+            )}
+
+            {/* Show buyer reply if exists */}
+            {selectedBoxForMessage?.buyer_reply && (
+              <div className="bg-blue-500/10 p-3 rounded-lg border border-blue-500/30">
+                <span className="text-xs text-blue-500 font-medium">Phản hồi của người mua:</span>
+                <p className="text-sm mt-1">{selectedBoxForMessage.buyer_reply}</p>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>Nội dung tin nhắn</Label>
+              <Textarea
+                value={adminMessageContent}
+                onChange={(e) => setAdminMessageContent(e.target.value)}
+                placeholder="Nhập nội dung tin nhắn gửi đến người mua..."
+                className="rounded-xl min-h-[100px]"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowAdminMessageDialog(false);
+                  setSelectedBoxForMessage(null);
+                  setAdminMessageContent('');
+                }}
+                className="rounded-xl"
+              >
+                Hủy
+              </Button>
+              <Button
+                onClick={handleAdminSendMessage}
+                disabled={!adminMessageContent.trim()}
+                className="rounded-xl gradient-primary"
+              >
+                Gửi tin nhắn
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* View Seller Rejection Reason Dialog */}
+      <Dialog open={showSellerRejectionDialog} onOpenChange={setShowSellerRejectionDialog}>
+        <DialogContent className="glass">
+          <DialogHeader>
+            <DialogTitle className="text-red-500">Lý do từ chối của người bán</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm whitespace-pre-wrap bg-red-500/10 p-4 rounded-lg border border-red-500/30">
+              {viewingSellerRejection}
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => setShowSellerRejectionDialog(false)}
+              className="w-full rounded-xl"
+            >
+              Đóng
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* View Buyer Reply Dialog */}
+      <Dialog open={showBuyerReplyDialog} onOpenChange={setShowBuyerReplyDialog}>
+        <DialogContent className="glass">
+          <DialogHeader>
+            <DialogTitle className="text-blue-500">Phản hồi của người mua</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm whitespace-pre-wrap bg-blue-500/10 p-4 rounded-lg border border-blue-500/30">
+              {viewingBuyerReply}
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => setShowBuyerReplyDialog(false)}
+              className="w-full rounded-xl"
+            >
+              Đóng
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
