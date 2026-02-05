@@ -947,11 +947,13 @@ const Trading = () => {
   const handleSellerComplete = async (paymentBoxId: string) => {
     if (!user) return;
 
+    const now = new Date().toISOString();
     try {
       const { error } = await supabase
         .from('payment_boxes')
         .update({ 
-          seller_completed_at: new Date().toISOString()
+          seller_completed_at: now,
+          transaction_start_at: now
         })
         .eq('id', paymentBoxId);
 
@@ -959,7 +961,7 @@ const Trading = () => {
 
       setPaymentBoxes(prev => prev.map(box => 
         box.id === paymentBoxId 
-          ? { ...box, seller_completed_at: new Date().toISOString() } 
+          ? { ...box, seller_completed_at: now, transaction_start_at: now } 
           : box
       ));
 
