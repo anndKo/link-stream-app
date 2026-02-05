@@ -138,6 +138,9 @@ const Trading = () => {
   const [showPaymentBoxDialog, setShowPaymentBoxDialog] = useState(false);
   const [paymentBoxes, setPaymentBoxes] = useState<PaymentBox[]>([]);
   const [adminPaymentSettings, setAdminPaymentSettings] = useState<AdminPaymentBoxSettings | null>(null);
+
+  // Ticker for countdown rendering (re-render every second)
+  const [nowTick, setNowTick] = useState(() => Date.now());
   
   // Payment duration dialog
   const [showPaymentDurationDialog, setShowPaymentDurationDialog] = useState(false);
@@ -202,6 +205,11 @@ const Trading = () => {
       }
     };
     fetchAdminSettings();
+  }, []);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick(Date.now()), 1000);
+    return () => window.clearInterval(id);
   }, []);
 
   const handleMessagesScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
@@ -1231,21 +1239,17 @@ const Trading = () => {
   const getRemainingSeconds = (box: PaymentBox): number | null => {
     if (!box.transaction_start_at || !box.payment_duration_days) return null;
     const endDate = addDays(new Date(box.transaction_start_at), box.payment_duration_days);
-    const remaining = differenceInSeconds(endDate, new Date());
+    const remaining = differenceInSeconds(endDate, new Date(nowTick));
     return Math.max(0, remaining);
   };
 
   // Format remaining time as "X Giờ Y Phút Z Giây"
   const formatRemainingTime = (totalSeconds: number): string => {
-    const days = Math.floor(totalSeconds / 86400);
-    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const totalHours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
     const seconds = totalSeconds % 60;
-    
-    if (days > 0) {
-      return `${days} Ngày ${hours} Giờ ${minutes} Phút ${seconds} Giây`;
-    }
-    return `${hours} Giờ ${minutes} Phút ${seconds} Giây`;
+
+    return `${totalHours} Giờ ${minutes} Phút ${seconds} Giây`;
   };
 
   const isTransactionExpired = (box: PaymentBox): boolean => {
