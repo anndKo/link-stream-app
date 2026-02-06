@@ -50,6 +50,9 @@ import {
   X,
   Check,
   RefreshCw,
+  ArrowLeft,
+  Eye,
+  Clock,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -96,6 +99,22 @@ const Admin = () => {
   const [transactionFee, setTransactionFee] = useState('');
   const [hasFee, setHasFee] = useState(true);
   const [isUploadingPaymentBox, setIsUploadingPaymentBox] = useState(false);
+
+  // Transaction messages viewer
+  const [showTransactionMessagesDialog, setShowTransactionMessagesDialog] = useState(false);
+  const [transactionConversations, setTransactionConversations] = useState<Array<{
+    participantA: Profile;
+    participantB: Profile;
+    lastMessage: any;
+    messageCount: number;
+  }>>([]);
+  const [selectedTransactionConvo, setSelectedTransactionConvo] = useState<{
+    participantA: Profile;
+    participantB: Profile;
+  } | null>(null);
+  const [transactionConvoMessages, setTransactionConvoMessages] = useState<any[]>([]);
+  const [transactionConvoBoxes, setTransactionConvoBoxes] = useState<PaymentBox[]>([]);
+  const [isLoadingTransactionMessages, setIsLoadingTransactionMessages] = useState(false);
 
   useEffect(() => {
     if (isAdmin) {
@@ -541,6 +560,103 @@ const Admin = () => {
     }
   };
 
+  // Fetch transaction conversations for admin
+  const handleViewTransactionMessages = async () => {
+    setIsLoadingTransactionMessages(true);
+    setShowTransactionMessagesDialog(true);
+    setSelectedTransactionConvo(null);
+
+    try {
+      const { data: messagesData, error } = await supabase
+        .from('transaction_messages')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(1000);
+
+      if (error) throw error;
+
+      // Group messages by conversation pairs
+      const conversationMap = new Map<string, any[]>();
+      (messagesData || []).forEach((msg: any) => {
+        const key = [msg.sender_id, msg.receiver_id].sort().join('-');
+        if (!conversationMap.has(key)) {
+          conversationMap.set(key, []);
+        }
+        conversationMap.get(key)!.push(msg);
+      });
+
+      const profilesMap = new Map(users.map(p => [p.id, p]));
+
+      const convos = Array.from(conversationMap.entries()).map(([key, msgs]) => {
+        const [idA, idB] = key.split('-');
+        return {
+          participantA: profilesMap.get(idA) || { id: idA, username: 'Unknown', display_name: 'Unknown', avatar_url: null } as any,
+          participantB: profilesMap.get(idB) || { id: idB, username: 'Unknown', display_name: 'Unknown', avatar_url: null } as any,
+          lastMessage: msgs[0],
+          messageCount: msgs.length,
+        };
+      });
+
+      convos.sort((a, b) => {
+        const aTime = a.lastMessage?.created_at || '';
+        const bTime = b.lastMessage?.created_at || '';
+        return bTime.localeCompare(aTime);
+      });
+
+      setTransactionConversations(convos);
+    } catch (error) {
+      console.error('Error fetching transaction messages:', error);
+      toast({ title: 'Lỗi', description: 'Không thể tải tin nhắn giao dịch', variant: 'destructive' });
+    } finally {
+      setIsLoadingTransactionMessages(false);
+    }
+  };
+
+  // View specific transaction conversation
+  const handleViewTransactionConvo = async (convo: { participantA: Profile; participantB: Profile }) => {
+    setSelectedTransactionConvo(convo);
+
+    try {
+      const { data: msgs } = await supabase
+        .from('transaction_messages')
+        .select('*')
+        .or(`and(sender_id.eq.${convo.participantA.id},receiver_id.eq.${convo.participantB.id}),and(sender_id.eq.${convo.participantB.id},receiver_id.eq.${convo.participantA.id})`)
+        .order('created_at', { ascending: true });
+
+      setTransactionConvoMessages(msgs || []);
+
+      const { data: boxes } = await supabase
+        .from('payment_boxes')
+        .select('*')
+        .or(`and(sender_id.eq.${convo.participantA.id},receiver_id.eq.${convo.participantB.id}),and(sender_id.eq.${convo.participantB.id},receiver_id.eq.${convo.participantA.id})`)
+        .order('created_at', { ascending: true });
+
+      if (boxes) {
+        const pMap = new Map(users.map(p => [p.id, p]));
+        const boxesWithProfiles = boxes.map(box => ({
+          ...box,
+          sender_profile: pMap.get(box.sender_id),
+          receiver_profile: pMap.get(box.receiver_id)
+        }));
+        setTransactionConvoBoxes(boxesWithProfiles as PaymentBox[]);
+      }
+    } catch (error) {
+      console.error('Error fetching conversation details:', error);
+    }
+  };
+
+  const formatDurationLabel = (duration: string, days: number | null): string => {
+    switch (duration) {
+      case '24h': return '24 giờ';
+      case '3days': return '3 ngày';
+      case '7days': return '7 ngày';
+      case '1month': return '1 tháng';
+      case 'custom': return `${days} ngày`;
+      case 'no_time': return 'Không giới hạn';
+      default: return duration;
+    }
+  };
+
   // Filter out deleted users (is_banned with reason) and apply search
   const filteredUsers = users.filter(
     (u) =>
@@ -782,6 +898,16 @@ const Admin = () => {
 
           {/* Transaction Posts Tab */}
           <TabsContent value="transaction-posts" className="space-y-4">
+            <div className="flex justify-end">
+              <Button
+                onClick={handleViewTransactionMessages}
+                variant="outline"
+                className="rounded-xl gap-2"
+              >
+                <MessageCircle className="w-4 h-4" />
+                Xem tin nhắn giao dịch
+              </Button>
+            </div>
             <div className="glass rounded-2xl overflow-hidden">
               <Table>
                 <TableHeader>
@@ -1462,6 +1588,212 @@ const Admin = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Transaction Messages Viewer Dialog */}
+      <Dialog open={showTransactionMessagesDialog} onOpenChange={setShowTransactionMessagesDialog}>
+        <DialogContent className="glass max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {selectedTransactionConvo ? (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setSelectedTransactionConvo(null)}
+                    className="rounded-lg mr-1"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                  </Button>
+                  <span>
+                    {selectedTransactionConvo.participantA.display_name} ↔ {selectedTransactionConvo.participantB.display_name}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <MessageCircle className="w-5 h-5" />
+                  Tin nhắn giao dịch
+                </>
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedTransactionConvo
+                ? 'Chi tiết tin nhắn và hộp thanh toán'
+                : `${transactionConversations.length} cuộc trò chuyện`
+              }
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto">
+            {!selectedTransactionConvo ? (
+              // Conversation list
+              <div className="space-y-2">
+                {isLoadingTransactionMessages ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="w-8 h-8 rounded-xl gradient-primary animate-pulse-slow" />
+                  </div>
+                ) : transactionConversations.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-8">
+                    Không có tin nhắn giao dịch nào
+                  </p>
+                ) : (
+                  transactionConversations.map((convo, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-3 p-3 rounded-xl bg-secondary/30 hover:bg-secondary/50 cursor-pointer transition-colors"
+                      onClick={() => handleViewTransactionConvo(convo)}
+                    >
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <Avatar className="h-9 w-9 shrink-0">
+                          <AvatarImage src={convo.participantA.avatar_url || ''} />
+                          <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                            {convo.participantA.display_name?.charAt(0) || 'U'}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="font-medium text-sm truncate">
+                          {convo.participantA.display_name}
+                        </span>
+                        <span className="text-muted-foreground text-sm">↔</span>
+                        <Avatar className="h-9 w-9 shrink-0">
+                          <AvatarImage src={convo.participantB.avatar_url || ''} />
+                          <AvatarFallback className="bg-secondary text-xs">
+                            {convo.participantB.display_name?.charAt(0) || 'U'}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="font-medium text-sm truncate">
+                          {convo.participantB.display_name}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <Badge variant="secondary" className="text-xs">
+                          {convo.messageCount} tin nhắn
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {convo.lastMessage?.created_at && formatDistanceToNow(new Date(convo.lastMessage.created_at), { addSuffix: true, locale: vi })}
+                        </span>
+                        <Eye className="w-4 h-4 text-muted-foreground" />
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            ) : (
+              // Conversation detail view
+              <div className="space-y-4">
+                {/* Payment Boxes */}
+                {transactionConvoBoxes.length > 0 && (
+                  <div className="space-y-3">
+                    <h4 className="font-medium flex items-center gap-2 text-sm">
+                      <CreditCard className="w-4 h-4" />
+                      Hộp thanh toán ({transactionConvoBoxes.length})
+                    </h4>
+                    {transactionConvoBoxes.map(box => (
+                      <div key={box.id} className="rounded-xl border p-3 space-y-2 bg-secondary/20">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="font-medium">{box.sender_profile?.display_name}</span>
+                            <span className="text-muted-foreground">→</span>
+                            <span className="font-medium">{box.receiver_profile?.display_name}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {box.sender_role && (
+                              <Badge variant="outline" className="text-xs">
+                                {box.sender_role === 'seller' ? '👤 Người bán' : '🛒 Người mua'}
+                              </Badge>
+                            )}
+                            {getStatusBadge(box.status)}
+                          </div>
+                        </div>
+                        
+                        {box.payment_duration && (
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Clock className="w-3 h-3" />
+                            <span>Thời gian: {formatDurationLabel(box.payment_duration, box.payment_duration_days)}</span>
+                          </div>
+                        )}
+
+                        <div className="flex flex-wrap gap-2 text-xs">
+                          {box.bill_image_url && (
+                            <Badge variant="outline" className="text-xs gap-1">
+                              <ImagePlus className="w-3 h-3" />
+                              Có bill
+                            </Badge>
+                          )}
+                          {box.seller_rejection_reason && (
+                            <Badge variant="outline" className="text-xs gap-1 border-red-500/50 text-red-500">
+                              Người bán từ chối
+                            </Badge>
+                          )}
+                          {box.admin_message && (
+                            <Badge variant="outline" className="text-xs gap-1 border-blue-500/50 text-blue-500">
+                              Admin đã nhắn
+                            </Badge>
+                          )}
+                          {box.buyer_reply && (
+                            <Badge variant="outline" className="text-xs gap-1 border-blue-500/50 text-blue-500">
+                              Người mua phản hồi
+                            </Badge>
+                          )}
+                          {box.refund_reason && (
+                            <Badge variant="outline" className="text-xs gap-1 border-orange-500/50 text-orange-500">
+                              Yêu cầu hoàn tiền
+                            </Badge>
+                          )}
+                        </div>
+
+                        <span className="text-xs text-muted-foreground">
+                          {formatDistanceToNow(new Date(box.created_at), { addSuffix: true, locale: vi })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Messages */}
+                <div className="space-y-2">
+                  <h4 className="font-medium flex items-center gap-2 text-sm">
+                    <MessageCircle className="w-4 h-4" />
+                    Tin nhắn ({transactionConvoMessages.length})
+                  </h4>
+                  {transactionConvoMessages.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-4 text-sm">
+                      Không có tin nhắn
+                    </p>
+                  ) : (
+                    <div className="space-y-2 max-h-[40vh] overflow-y-auto">
+                      {transactionConvoMessages.map((msg: any) => {
+                        const isSenderA = msg.sender_id === selectedTransactionConvo?.participantA.id;
+                        const senderName = isSenderA 
+                          ? selectedTransactionConvo?.participantA.display_name 
+                          : selectedTransactionConvo?.participantB.display_name;
+                        
+                        return (
+                          <div key={msg.id} className="p-2 rounded-lg bg-secondary/30 space-y-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-medium">{senderName}</span>
+                              <span className="text-xs text-muted-foreground">
+                                {formatDistanceToNow(new Date(msg.created_at), { addSuffix: true, locale: vi })}
+                              </span>
+                            </div>
+                            {msg.content && <p className="text-sm">{msg.content}</p>}
+                            {msg.image_url && (
+                              <img 
+                                src={msg.image_url} 
+                                alt="Attached" 
+                                className="max-w-[200px] rounded-lg cursor-pointer"
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </MainLayout>
   );
 };
