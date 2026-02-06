@@ -1259,6 +1259,19 @@ const Trading = () => {
     return remaining !== null && remaining <= 0;
   };
 
+  // Format duration label
+  const formatDurationLabel = (duration: string, days: number | null): string => {
+    switch (duration) {
+      case '24h': return '24 giờ';
+      case '3days': return '3 ngày';
+      case '7days': return '7 ngày';
+      case '1month': return '1 tháng';
+      case 'custom': return `${days} ngày`;
+      case 'no_time': return 'Không giới hạn thời gian';
+      default: return duration;
+    }
+  };
+
   // Render payment box in chat
   const renderPaymentBox = (box: PaymentBox) => {
     // Determine roles based on sender_role
@@ -1365,6 +1378,14 @@ const Trading = () => {
               </span>
             )}
           </div>
+
+          {/* Show selected payment duration */}
+          {box.payment_duration && (
+            <div className="flex items-center gap-2 text-sm mb-2 p-2 rounded bg-secondary/50">
+              <Clock className="w-4 h-4" />
+              <span>Thời gian giao dịch: <strong>{formatDurationLabel(box.payment_duration, box.payment_duration_days)}</strong></span>
+            </div>
+          )}
           
           <p className="text-sm text-muted-foreground mb-3">
             {getStatusMessage()}
