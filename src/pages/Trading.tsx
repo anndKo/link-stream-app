@@ -100,10 +100,14 @@ interface PaymentBox {
   bill_image_url?: string | null;
   sender_role?: 'buyer' | 'seller';
   seller_rejection_reason?: string | null;
+  seller_rejection_bank_account?: string | null;
+  seller_rejection_bank_name?: string | null;
   admin_message?: string | null;
   buyer_reply?: string | null;
   admin_message_at?: string | null;
   buyer_reply_at?: string | null;
+  admin_seller_message?: string | null;
+  admin_seller_message_at?: string | null;
 }
 
 const Trading = () => {
@@ -174,7 +178,8 @@ const Trading = () => {
   // Seller rejection dialog
   const [showRejectRefundDialog, setShowRejectRefundDialog] = useState(false);
   const [sellerRejectionReason, setSellerRejectionReason] = useState('');
-  
+  const [sellerRejectionBankAccount, setSellerRejectionBankAccount] = useState('');
+  const [sellerRejectionBankName, setSellerRejectionBankName] = useState('');
   // View rejection reason dialog
   const [showRejectionReasonDialog, setShowRejectionReasonDialog] = useState(false);
   const [viewingRejectionReason, setViewingRejectionReason] = useState('');
@@ -1107,7 +1112,9 @@ const Trading = () => {
       const { error } = await supabase
         .from('payment_boxes')
         .update({ 
-          seller_rejection_reason: sellerRejectionReason
+          seller_rejection_reason: sellerRejectionReason,
+          seller_rejection_bank_account: sellerRejectionBankAccount || null,
+          seller_rejection_bank_name: sellerRejectionBankName || null,
         })
         .eq('id', selectedPaymentBoxId);
 
@@ -1115,7 +1122,7 @@ const Trading = () => {
 
       setPaymentBoxes(prev => prev.map(box => 
         box.id === selectedPaymentBoxId 
-          ? { ...box, seller_rejection_reason: sellerRejectionReason } 
+          ? { ...box, seller_rejection_reason: sellerRejectionReason, seller_rejection_bank_account: sellerRejectionBankAccount || null, seller_rejection_bank_name: sellerRejectionBankName || null } 
           : box
       ));
 
@@ -1127,6 +1134,8 @@ const Trading = () => {
       setShowRejectRefundDialog(false);
       setSelectedPaymentBoxId(null);
       setSellerRejectionReason('');
+      setSellerRejectionBankAccount('');
+      setSellerRejectionBankName('');
     } catch (error) {
       console.error('Error rejecting refund:', error);
       toast({
@@ -1461,6 +1470,16 @@ const Trading = () => {
                 <span className="text-sm font-medium text-red-500">Người bán đã từ chối</span>
                 <span className="text-xs text-muted-foreground">(Bấm để xem lý do)</span>
               </div>
+            </div>
+          )}
+
+          {/* Show admin reply to seller */}
+          {box.admin_seller_message && isSeller && (
+            <div className="mb-3 p-2 rounded bg-blue-500/10 border border-blue-500/30">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-sm font-medium text-blue-500">📩 Phản hồi từ Admin</span>
+              </div>
+              <p className="text-sm">{box.admin_seller_message}</p>
             </div>
           )}
 
@@ -3044,10 +3063,28 @@ const Trading = () => {
           <DialogHeader>
             <DialogTitle>Từ chối yêu cầu hoàn tiền</DialogTitle>
             <DialogDescription>
-              Vui lòng nhập lý do từ chối. Lý do sẽ được gửi đến Admin để xem xét.
+              Vui lòng nhập lý do từ chối và thông tin ngân hàng. Lý do sẽ được gửi đến Admin để xem xét.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Tên ngân hàng</Label>
+              <Input
+                value={sellerRejectionBankName}
+                onChange={(e) => setSellerRejectionBankName(e.target.value)}
+                placeholder="VD: Vietcombank, MB Bank..."
+                className="rounded-xl"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Số tài khoản</Label>
+              <Input
+                value={sellerRejectionBankAccount}
+                onChange={(e) => setSellerRejectionBankAccount(e.target.value)}
+                placeholder="Số tài khoản ngân hàng..."
+                className="rounded-xl"
+              />
+            </div>
             <div className="space-y-2">
               <Label>Lý do từ chối *</Label>
               <Textarea
@@ -3064,6 +3101,8 @@ const Trading = () => {
                   setShowRejectRefundDialog(false);
                   setSelectedPaymentBoxId(null);
                   setSellerRejectionReason('');
+                  setSellerRejectionBankAccount('');
+                  setSellerRejectionBankName('');
                 }}
                 className="rounded-xl"
               >

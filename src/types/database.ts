@@ -191,10 +191,14 @@ export interface PaymentBox {
   bill_image_url?: string | null;
   sender_role?: 'buyer' | 'seller';
   seller_rejection_reason?: string | null;
+  seller_rejection_bank_account?: string | null;
+  seller_rejection_bank_name?: string | null;
   admin_message?: string | null;
   buyer_reply?: string | null;
   admin_message_at?: string | null;
   buyer_reply_at?: string | null;
+  admin_seller_message?: string | null;
+  admin_seller_message_at?: string | null;
   sender_profile?: Profile;
   receiver_profile?: Profile;
 }
