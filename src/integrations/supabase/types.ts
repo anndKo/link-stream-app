@@ -307,6 +307,8 @@ export type Database = {
           admin_confirmed_at: string | null
           admin_message: string | null
           admin_message_at: string | null
+          admin_seller_message: string | null
+          admin_seller_message_at: string | null
           bill_image_url: string | null
           buyer_bank_account: string | null
           buyer_bank_name: string | null
@@ -330,6 +332,8 @@ export type Database = {
           seller_cancelled_at: string | null
           seller_completed_at: string | null
           seller_confirmed_at: string | null
+          seller_rejection_bank_account: string | null
+          seller_rejection_bank_name: string | null
           seller_rejection_reason: string | null
           sender_id: string
           sender_role: string | null
@@ -341,6 +345,8 @@ export type Database = {
           admin_confirmed_at?: string | null
           admin_message?: string | null
           admin_message_at?: string | null
+          admin_seller_message?: string | null
+          admin_seller_message_at?: string | null
           bill_image_url?: string | null
           buyer_bank_account?: string | null
           buyer_bank_name?: string | null
@@ -364,6 +370,8 @@ export type Database = {
           seller_cancelled_at?: string | null
           seller_completed_at?: string | null
           seller_confirmed_at?: string | null
+          seller_rejection_bank_account?: string | null
+          seller_rejection_bank_name?: string | null
           seller_rejection_reason?: string | null
           sender_id: string
           sender_role?: string | null
@@ -375,6 +383,8 @@ export type Database = {
           admin_confirmed_at?: string | null
           admin_message?: string | null
           admin_message_at?: string | null
+          admin_seller_message?: string | null
+          admin_seller_message_at?: string | null
           bill_image_url?: string | null
           buyer_bank_account?: string | null
           buyer_bank_name?: string | null
@@ -398,6 +408,8 @@ export type Database = {
           seller_cancelled_at?: string | null
           seller_completed_at?: string | null
           seller_confirmed_at?: string | null
+          seller_rejection_bank_account?: string | null
+          seller_rejection_bank_name?: string | null
           seller_rejection_reason?: string | null
           sender_id?: string
           sender_role?: string | null

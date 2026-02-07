@@ -90,6 +90,8 @@ const Admin = () => {
   // View seller rejection reason dialog
   const [showSellerRejectionDialog, setShowSellerRejectionDialog] = useState(false);
   const [viewingSellerRejection, setViewingSellerRejection] = useState('');
+  const [viewingSellerRejectionBox, setViewingSellerRejectionBox] = useState<PaymentBox | null>(null);
+  const [adminSellerMessageContent, setAdminSellerMessageContent] = useState('');
   
   // Admin payment box settings
   const [adminSettings, setAdminSettings] = useState<AdminPaymentBoxSettings | null>(null);
@@ -207,49 +209,20 @@ const Admin = () => {
     }
 
     try {
-      // Get the user's registration IP to ban it
-      const userToBan = users.find(u => u.id === userToDelete);
-      
-      // Update profile with ban reason and is_banned flag first
-      await supabase
-        .from('profiles')
-        .update({ is_banned: true, ban_reason: banReason.trim() })
-        .eq('id', userToDelete);
+      const { data, error } = await supabase.functions.invoke('delete-user', {
+        body: { userId: userToDelete, banReason: banReason.trim() },
+      });
 
-      // If user has registration IP, ban it
-      if (userToBan?.registration_ip) {
-        await supabase.from('banned_ips').insert({
-          ip_address: userToBan.registration_ip,
-          reason: `Xóa tài khoản: ${banReason.trim()}`,
-          banned_by: users.find(u => u.id === userToDelete)?.id
-        });
-      }
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
 
-      // Delete all posts by this user
-      await supabase.from('posts').delete().eq('user_id', userToDelete);
-      
-      // Delete all transaction posts by this user
-      await supabase.from('transaction_posts').delete().eq('user_id', userToDelete);
-      
-      // Delete all messages by this user
-      await supabase.from('messages').delete().eq('sender_id', userToDelete);
-      await supabase.from('transaction_messages').delete().eq('sender_id', userToDelete);
-      
-      // Delete all comments by this user
-      await supabase.from('comments').delete().eq('user_id', userToDelete);
-      
-      // Delete all likes by this user
-      await supabase.from('likes').delete().eq('user_id', userToDelete);
-      
-      // Delete all friendships
-      await supabase.from('friendships').delete().or(`requester_id.eq.${userToDelete},addressee_id.eq.${userToDelete}`);
-
-      // Remove user from local state completely (deleted users don't show in list)
+      // Remove user from local state
       setUsers(prev => prev.filter(u => u.id !== userToDelete));
       setPosts(prev => prev.filter((p) => p.user_id !== userToDelete));
       setTransactionPosts(prev => prev.filter((p) => p.user_id !== userToDelete));
+      setPaymentBoxes(prev => prev.filter(b => b.sender_id !== userToDelete && b.receiver_id !== userToDelete));
       
-      toast({ title: 'Đã xóa tài khoản và chặn IP của người dùng' });
+      toast({ title: 'Đã xóa vĩnh viễn tài khoản và chặn IP' });
       setShowDeleteDialog(false);
       setUserToDelete(null);
       setBanReason('');
@@ -578,7 +551,7 @@ const Admin = () => {
       // Group messages by conversation pairs
       const conversationMap = new Map<string, any[]>();
       (messagesData || []).forEach((msg: any) => {
-        const key = [msg.sender_id, msg.receiver_id].sort().join('-');
+        const key = [msg.sender_id, msg.receiver_id].sort().join('||');
         if (!conversationMap.has(key)) {
           conversationMap.set(key, []);
         }
@@ -588,7 +561,7 @@ const Admin = () => {
       const profilesMap = new Map(users.map(p => [p.id, p]));
 
       const convos = Array.from(conversationMap.entries()).map(([key, msgs]) => {
-        const [idA, idB] = key.split('-');
+        const [idA, idB] = key.split('||');
         return {
           participantA: profilesMap.get(idA) || { id: idA, username: 'Unknown', display_name: 'Unknown', avatar_url: null } as any,
           participantB: profilesMap.get(idB) || { id: idB, username: 'Unknown', display_name: 'Unknown', avatar_url: null } as any,
@@ -1211,6 +1184,8 @@ const Admin = () => {
                             className="text-red-500 hover:text-red-600 gap-1"
                             onClick={() => {
                               setViewingSellerRejection(box.seller_rejection_reason || '');
+                              setViewingSellerRejectionBox(box);
+                              setAdminSellerMessageContent(box.admin_seller_message || '');
                               setShowSellerRejectionDialog(true);
                             }}
                           >
@@ -1547,7 +1522,7 @@ const Admin = () => {
         </DialogContent>
       </Dialog>
 
-      {/* View Seller Rejection Reason Dialog */}
+      {/* View Seller Rejection Reason Dialog - with Admin Reply */}
       <Dialog open={showSellerRejectionDialog} onOpenChange={setShowSellerRejectionDialog}>
         <DialogContent className="glass">
           <DialogHeader>
@@ -1557,13 +1532,77 @@ const Admin = () => {
             <p className="text-sm whitespace-pre-wrap bg-red-500/10 p-4 rounded-lg border border-red-500/30">
               {viewingSellerRejection}
             </p>
-            <Button
-              variant="outline"
-              onClick={() => setShowSellerRejectionDialog(false)}
-              className="w-full rounded-xl"
-            >
-              Đóng
-            </Button>
+
+            {/* Show seller's bank info if provided */}
+            {viewingSellerRejectionBox?.seller_rejection_bank_name && (
+              <div className="bg-secondary/50 p-3 rounded-lg space-y-1">
+                <span className="text-xs text-muted-foreground font-medium">Thông tin ngân hàng người bán:</span>
+                <p className="text-sm">Ngân hàng: <strong>{viewingSellerRejectionBox.seller_rejection_bank_name}</strong></p>
+                <p className="text-sm">Số TK: <strong>{viewingSellerRejectionBox.seller_rejection_bank_account}</strong></p>
+              </div>
+            )}
+
+            {/* Show existing admin reply if any */}
+            {viewingSellerRejectionBox?.admin_seller_message && (
+              <div className="bg-blue-500/10 p-3 rounded-lg border border-blue-500/30">
+                <span className="text-xs text-blue-500 font-medium">Phản hồi Admin đã gửi:</span>
+                <p className="text-sm mt-1">{viewingSellerRejectionBox.admin_seller_message}</p>
+              </div>
+            )}
+
+            {/* Admin reply textarea */}
+            <div className="space-y-2">
+              <Label>Phản hồi của Admin đến người bán</Label>
+              <Textarea
+                value={adminSellerMessageContent}
+                onChange={(e) => setAdminSellerMessageContent(e.target.value)}
+                placeholder="Nhập phản hồi gửi đến người bán..."
+                className="rounded-xl min-h-[80px]"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowSellerRejectionDialog(false);
+                  setViewingSellerRejectionBox(null);
+                  setAdminSellerMessageContent('');
+                }}
+                className="rounded-xl"
+              >
+                Đóng
+              </Button>
+              <Button
+                onClick={async () => {
+                  if (!viewingSellerRejectionBox || !adminSellerMessageContent.trim()) return;
+                  try {
+                    const { error } = await supabase
+                      .from('payment_boxes')
+                      .update({ 
+                        admin_seller_message: adminSellerMessageContent,
+                        admin_seller_message_at: new Date().toISOString()
+                      })
+                      .eq('id', viewingSellerRejectionBox.id);
+                    if (error) throw error;
+                    setPaymentBoxes(prev => prev.map(box => 
+                      box.id === viewingSellerRejectionBox.id 
+                        ? { ...box, admin_seller_message: adminSellerMessageContent, admin_seller_message_at: new Date().toISOString() } as any
+                        : box
+                    ));
+                    toast({ title: 'Đã gửi phản hồi đến người bán' });
+                    setShowSellerRejectionDialog(false);
+                    setViewingSellerRejectionBox(null);
+                    setAdminSellerMessageContent('');
+                  } catch (error) {
+                    toast({ title: 'Lỗi', description: 'Không thể gửi phản hồi', variant: 'destructive' });
+                  }
+                }}
+                disabled={!adminSellerMessageContent.trim()}
+                className="rounded-xl gradient-primary"
+              >
+                Gửi phản hồi
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
