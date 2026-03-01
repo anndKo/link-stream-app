@@ -53,6 +53,16 @@ export const PostCard = memo(({ post, onDelete }: PostCardProps) => {
   const [reportDescription, setReportDescription] = useState('');
   const [fullscreenOpen, setFullscreenOpen] = useState(false);
 
+  // Disable body scroll when fullscreen is open
+  useEffect(() => {
+    if (fullscreenOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [fullscreenOpen]);
+
   const canDelete = user?.id === post.user_id || isAdmin;
 
   const fetchLikeStatus = useCallback(async () => {
@@ -268,15 +278,15 @@ export const PostCard = memo(({ post, onDelete }: PostCardProps) => {
 
       {/* Fullscreen Post View */}
       {fullscreenOpen && (
-        <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col animate-fade-in overflow-auto">
+        <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col animate-fade-in" style={{ overflow: 'hidden' }}>
           {/* Close button */}
-          <div className="flex justify-end p-4 sticky top-0 z-10">
+          <div className="flex justify-end p-4 sticky top-0 z-10 flex-shrink-0">
             <Button variant="ghost" size="icon" className="rounded-full h-10 w-10 bg-secondary/80" onClick={() => setFullscreenOpen(false)}>
               <X className="w-5 h-5" />
             </Button>
           </div>
 
-          <div className="flex-1 max-w-3xl mx-auto w-full px-4 pb-6 space-y-4">
+          <div className="flex-1 max-w-3xl mx-auto w-full px-4 pb-6 space-y-4 overflow-y-auto">
             {/* Post header */}
             <div className="flex items-center gap-3">
               <Avatar className="h-12 w-12 ring-2 ring-primary/20">

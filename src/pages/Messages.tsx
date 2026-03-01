@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Message, Profile, Conversation, DeletionDisableRequest, MessageDeletionSetting } from '@/types/database';
-import { Send, Image, Search, MoreVertical, Flag, ArrowLeft, MessageCircle, Smile, X, Edit, Trash2, Reply, Clock, Check, XCircle, ArrowDown } from 'lucide-react';
+import { Send, Image, Search, MoreVertical, Flag, ArrowLeft, MessageCircle, Smile, X, Edit, Trash2, Reply, Clock, Check, XCircle, ArrowDown, Settings2, Volume2, VolumeX } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
+import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -57,6 +58,11 @@ const Messages = () => {
   const [editContent, setEditContent] = useState('');
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    const stored = localStorage.getItem('notification_sound_enabled');
+    return stored !== 'false'; // default true
+  });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -552,7 +558,44 @@ const Messages = () => {
             isMobileView && selectedConversation && "hidden"
           )}>
             <div className="p-4 border-b border-border">
-              <h2 className="text-xl font-bold mb-4">Tin nhắn</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold">Tin nhắn</h2>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="rounded-xl"
+                  onClick={() => setShowSettings(!showSettings)}
+                >
+                  <Settings2 className="w-5 h-5" />
+                </Button>
+              </div>
+              
+              {showSettings && (
+                <div className="mb-4 p-3 rounded-xl bg-secondary/50 border border-border animate-fade-in">
+                  <h3 className="font-semibold mb-3 text-sm">Cài đặt</h3>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4 text-muted-foreground" />}
+                      <span className="text-sm">Âm thanh thông báo</span>
+                    </div>
+                    <Switch
+                      checked={soundEnabled}
+                      onCheckedChange={(checked) => {
+                        if (!checked) {
+                          if (!confirm('Bạn có chắc muốn tắt âm thanh thông báo?')) return;
+                        }
+                        setSoundEnabled(checked);
+                        localStorage.setItem('notification_sound_enabled', String(checked));
+                        toast({
+                          title: checked ? 'Đã bật âm thanh' : 'Đã tắt âm thanh',
+                          description: checked ? 'Bạn sẽ nhận âm thanh khi có tin nhắn mới' : 'Âm thanh thông báo đã được tắt',
+                        });
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input

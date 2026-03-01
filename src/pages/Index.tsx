@@ -104,49 +104,49 @@ const Index = () => {
     <MainLayout>
       <div className="max-w-2xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center shadow-glow">
-              <Sparkles className="w-5 h-5 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">Bảng tin</h1>
-              <p className="text-sm text-muted-foreground">Khám phá những gì mới</p>
-            </div>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center shadow-glow">
+            <Sparkles className="w-5 h-5 text-primary-foreground" />
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              fetchPosts();
-              if (filter === 'random') {
-                setFilter('random');
-              }
-            }}
-            className="rounded-xl gap-2"
-          >
-            <RefreshCw className="w-4 h-4" />
-            Làm mới
-          </Button>
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Bảng tin</h1>
+            <p className="text-sm text-muted-foreground">Khám phá những gì mới</p>
+          </div>
         </div>
 
-        {/* Filter Tabs */}
-        <Tabs value={filter} onValueChange={(v) => setFilter(v as FilterType)} className="w-full">
-          <TabsList className="w-full glass rounded-xl p-1">
-            <TabsTrigger value="random" className="flex-1 rounded-lg gap-2">
-              <Shuffle className="w-4 h-4" />
-              Ngẫu nhiên
-            </TabsTrigger>
-            <TabsTrigger value="newest" className="flex-1 rounded-lg gap-2">
-              <Clock className="w-4 h-4" />
-              Mới nhất
-            </TabsTrigger>
-            <TabsTrigger value="all" className="flex-1 rounded-lg gap-2">
-              <List className="w-4 h-4" />
-              Tất cả
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+        {/* Sticky Filter Bar */}
+        <div className="sticky top-16 z-30 bg-background/95 backdrop-blur-sm border-b border-border/50 shadow-sm -mx-4 px-4 py-3">
+          <div className="flex items-center gap-2">
+            <Tabs value={filter} onValueChange={(v) => setFilter(v as FilterType)} className="flex-1">
+              <TabsList className="w-full glass rounded-xl p-1">
+                <TabsTrigger value="random" className="flex-1 rounded-lg gap-2">
+                  <Shuffle className="w-4 h-4" />
+                  Ngẫu nhiên
+                </TabsTrigger>
+                <TabsTrigger value="newest" className="flex-1 rounded-lg gap-2">
+                  <Clock className="w-4 h-4" />
+                  Mới nhất
+                </TabsTrigger>
+                <TabsTrigger value="all" className="flex-1 rounded-lg gap-2">
+                  <List className="w-4 h-4" />
+                  Tất cả
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => {
+                fetchPosts();
+                if (filter === 'random') setFilter('random');
+              }}
+              className="rounded-xl h-10 w-10 flex-shrink-0"
+              title="Làm mới"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
 
         {/* Create Post */}
         <CreatePost onPostCreated={fetchPosts} />
