@@ -40,11 +40,10 @@ const Friends = () => {
   const [friendToDelete, setFriendToDelete] = useState<FriendWithProfile | null>(null);
   const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
 
-  const fetchFriends = useCallback(async () => {
+  const fetchFriends = useCallback(async (retryCount = 0) => {
     if (!user) return;
 
     try {
-      // Fetch accepted friendships where user is either requester or addressee
       const { data: friendships, error } = await supabase
         .from('friendships')
         .select('*')
@@ -56,12 +55,10 @@ const Friends = () => {
       if (!friendships || friendships.length === 0) {
         setFriends([]);
       } else {
-        // Get friend IDs (the other person in each friendship)
         const friendIds = friendships.map(f => 
           f.requester_id === user.id ? f.addressee_id : f.requester_id
         );
 
-        // Fetch friend profiles
         const { data: profiles, error: profilesError } = await supabase
           .from('public_profiles')
           .select('*')
@@ -89,9 +86,13 @@ const Friends = () => {
       }
     } catch (error) {
       console.error('Error fetching friends:', error);
+      if (retryCount < 2) {
+        setTimeout(() => fetchFriends(retryCount + 1), 1000 * (retryCount + 1));
+        return;
+      }
       toast({
         title: 'Lỗi',
-        description: 'Không thể tải danh sách bạn bè',
+        description: 'Không thể tải danh sách bạn bè. Kéo xuống để thử lại.',
         variant: 'destructive'
       });
     }
@@ -148,12 +149,14 @@ const Friends = () => {
   }, [user]);
 
   useEffect(() => {
+    let cancelled = false;
     const fetchAll = async () => {
       setIsLoading(true);
       await Promise.all([fetchFriends(), fetchPendingRequests()]);
-      setIsLoading(false);
+      if (!cancelled) setIsLoading(false);
     };
     fetchAll();
+    return () => { cancelled = true; };
   }, [fetchFriends, fetchPendingRequests]);
 
   const handleAcceptRequest = async (friendshipId: string) => {

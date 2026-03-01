@@ -1965,36 +1965,72 @@ const Trading = () => {
               </CardContent>
             </Card>
 
-            {/* Category Filter & Search */}
-            <div className="space-y-3">
-              {/* Sort buttons */}
-              <div className="flex gap-2 flex-wrap">
+            {/* Sticky Filter & Search Bar */}
+            <div className="sticky top-16 z-30 bg-background/95 backdrop-blur-sm border-b border-border/50 shadow-sm -mx-4 px-4 py-3 space-y-3">
+              {/* Sort buttons + Refresh - all in one row */}
+              <div className="flex items-center gap-2">
+                {/* Desktop: show all buttons */}
+                <div className="hidden sm:flex gap-2 flex-1">
+                  <Button
+                    variant={postFilter === 'newest' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setPostFilter('newest')}
+                    className="rounded-xl"
+                  >
+                    <Clock className="w-4 h-4 mr-1" />
+                    Mới nhất
+                  </Button>
+                  <Button
+                    variant={postFilter === 'random' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setPostFilter('random')}
+                    className="rounded-xl"
+                  >
+                    <Shuffle className="w-4 h-4 mr-1" />
+                    Ngẫu nhiên
+                  </Button>
+                  <Button
+                    variant={postFilter === 'all' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setPostFilter('all')}
+                    className="rounded-xl"
+                  >
+                    <List className="w-4 h-4 mr-1" />
+                    Tất cả
+                  </Button>
+                </div>
+
+                {/* Mobile: dropdown filter */}
+                <div className="sm:hidden flex-1">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="rounded-xl gap-2">
+                        <List className="w-4 h-4" />
+                        Bộ lọc: {postFilter === 'newest' ? 'Mới nhất' : postFilter === 'random' ? 'Ngẫu nhiên' : 'Tất cả'}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="glass">
+                      <DropdownMenuItem onClick={() => setPostFilter('newest')} className="cursor-pointer gap-2">
+                        <Clock className="w-4 h-4" /> Mới nhất
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setPostFilter('random')} className="cursor-pointer gap-2">
+                        <Shuffle className="w-4 h-4" /> Ngẫu nhiên
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setPostFilter('all')} className="cursor-pointer gap-2">
+                        <List className="w-4 h-4" /> Tất cả
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+
                 <Button
-                  variant={postFilter === 'newest' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setPostFilter('newest')}
-                  className="rounded-xl"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => fetchPosts()}
+                  className="rounded-xl h-9 w-9 flex-shrink-0"
+                  title="Load lại"
                 >
-                  <Clock className="w-4 h-4 mr-1" />
-                  Mới nhất
-                </Button>
-                <Button
-                  variant={postFilter === 'random' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setPostFilter('random')}
-                  className="rounded-xl"
-                >
-                  <Shuffle className="w-4 h-4 mr-1" />
-                  Ngẫu nhiên
-                </Button>
-                <Button
-                  variant={postFilter === 'all' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setPostFilter('all')}
-                  className="rounded-xl"
-                >
-                  <List className="w-4 h-4 mr-1" />
-                  Tất cả
+                  <RefreshCw className="w-4 h-4" />
                 </Button>
               </div>
 

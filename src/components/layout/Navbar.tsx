@@ -44,8 +44,10 @@ export const Navbar = () => {
     audioRef.current.volume = 0.5;
   }, []);
 
-  // Play notification sound
+  // Play notification sound (respects user setting)
   const playNotificationSound = useCallback(() => {
+    const soundEnabled = localStorage.getItem('notification_sound_enabled');
+    if (soundEnabled === 'false') return;
     if (audioRef.current) {
       audioRef.current.currentTime = 0;
       audioRef.current.play().catch(err => {
@@ -401,6 +403,18 @@ export const Navbar = () => {
               onClick={() => navigate('/messages')}
             >
               <MessageCircle className="w-5 h-5" />
+              {(() => {
+                const msgNotifs = notifications.filter(n => n.type === 'unread_messages');
+                const totalMsgUnread = msgNotifs.reduce((sum, n) => sum + (n.count || 0), 0);
+                if (totalMsgUnread > 0) {
+                  return (
+                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-destructive rounded-full text-[10px] flex items-center justify-center text-destructive-foreground font-bold animate-pulse">
+                      {totalMsgUnread > 9 ? '9+' : totalMsgUnread}
+                    </span>
+                  );
+                }
+                return null;
+              })()}
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
