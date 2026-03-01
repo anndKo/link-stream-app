@@ -140,6 +140,7 @@ const Trading = () => {
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [postSearchQuery, setPostSearchQuery] = useState('');
   const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
+  const [showCategories, setShowCategories] = useState(false);
 
   // Messages state
   const [conversations, setConversations] = useState<TradingConversation[]>([]);
@@ -2024,6 +2025,16 @@ const Trading = () => {
                 </div>
 
                 <Button
+                  variant={showCategories ? 'default' : 'outline'}
+                  size="icon"
+                  onClick={() => setShowCategories(!showCategories)}
+                  className="rounded-xl h-9 w-9 flex-shrink-0"
+                  title="Chủ đề"
+                >
+                  <Tag className="w-4 h-4" />
+                </Button>
+
+                <Button
                   variant="outline"
                   size="icon"
                   onClick={() => fetchPosts()}
@@ -2034,31 +2045,33 @@ const Trading = () => {
                 </Button>
               </div>
 
-              {/* Category tags - sorted by popularity */}
-              <div className="flex gap-2 flex-wrap">
-                <Badge
-                  variant={filterCategory === 'all' ? 'default' : 'outline'}
-                  className="cursor-pointer rounded-xl px-3 py-1.5 text-sm transition-all hover:scale-105"
-                  onClick={() => setFilterCategory('all')}
-                >
-                  Tất cả
-                </Badge>
-                {[...CATEGORIES, { value: 'khac', label: 'Khác', color: 'bg-muted text-muted-foreground border-border' }]
-                  .sort((a, b) => (categoryCounts[b.value] || 0) - (categoryCounts[a.value] || 0))
-                  .map(cat => (
-                    <Badge
-                      key={cat.value}
-                      variant="outline"
-                      className={`cursor-pointer rounded-xl px-3 py-1.5 text-sm transition-all hover:scale-105 ${
-                        filterCategory === cat.value ? cat.color + ' border' : ''
-                      }`}
-                      onClick={() => setFilterCategory(cat.value)}
-                    >
-                      {cat.label}
-                      {categoryCounts[cat.value] ? ` (${categoryCounts[cat.value]})` : ''}
-                    </Badge>
-                  ))}
-              </div>
+              {/* Category tags - collapsible */}
+              {showCategories && (
+                <div className="flex gap-2 flex-wrap animate-fade-in">
+                  <Badge
+                    variant={filterCategory === 'all' ? 'default' : 'outline'}
+                    className="cursor-pointer rounded-xl px-3 py-1.5 text-sm transition-all hover:scale-105"
+                    onClick={() => setFilterCategory('all')}
+                  >
+                    Tất cả
+                  </Badge>
+                  {[...CATEGORIES, { value: 'khac', label: 'Khác', color: 'bg-muted text-muted-foreground border-border' }]
+                    .sort((a, b) => (categoryCounts[b.value] || 0) - (categoryCounts[a.value] || 0))
+                    .map(cat => (
+                      <Badge
+                        key={cat.value}
+                        variant="outline"
+                        className={`cursor-pointer rounded-xl px-3 py-1.5 text-sm transition-all hover:scale-105 ${
+                          filterCategory === cat.value ? cat.color + ' border' : ''
+                        }`}
+                        onClick={() => setFilterCategory(cat.value)}
+                      >
+                        {cat.label}
+                        {categoryCounts[cat.value] ? ` (${categoryCounts[cat.value]})` : ''}
+                      </Badge>
+                    ))}
+                </div>
+              )}
 
               {/* Search bar */}
               <div className="relative">
