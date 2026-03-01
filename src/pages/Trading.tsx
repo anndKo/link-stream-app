@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ImagePlus, Send, X, Search, Image as ImageIcon, Clock, Shuffle, List, Sparkles, MessageCircle, ArrowLeft, ArrowDown, MoreVertical, Flag, CreditCard, Check, XCircle, Trash2, RefreshCw, CheckCircle, Timer } from 'lucide-react';
+import { ImagePlus, Send, X, Search, Image as ImageIcon, Clock, Shuffle, List, Sparkles, MessageCircle, ArrowLeft, ArrowDown, MoreVertical, Flag, CreditCard, Check, XCircle, Trash2, RefreshCw, CheckCircle, Timer, Tag } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,13 +35,24 @@ import { formatDistanceToNow, differenceInDays, differenceInSeconds, addDays } f
 import { vi } from 'date-fns/locale';
 import { Link } from 'react-router-dom';
 import { ImageLightbox } from '@/components/ui/image-lightbox';
+import { Badge } from '@/components/ui/badge';
 import { PaymentBoxStatus, AdminPaymentBoxSettings } from '@/types/database';
+
+const CATEGORIES = [
+  { value: 'tai-khoan-game', label: 'Tài khoản Game', color: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30' },
+  { value: 'pass-do', label: 'Pass đồ', color: 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/30' },
+  { value: 'mua-sam', label: 'Mua sắm', color: 'bg-green-500/15 text-green-600 dark:text-green-400 border-green-500/30' },
+  { value: 'dich-vu', label: 'Dịch vụ', color: 'bg-orange-500/15 text-orange-600 dark:text-orange-400 border-orange-500/30' },
+  { value: 'crypto', label: 'Crypto', color: 'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400 border-yellow-500/30' },
+  { value: 'mmo', label: 'MMO', color: 'bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30' },
+];
 
 interface TradingPost {
   id: string;
   user_id: string;
   content: string | null;
   image_url: string | null;
+  category: string | null;
   created_at: string;
   profiles?: {
     id: string;
@@ -122,6 +133,13 @@ const Trading = () => {
   const [postFilter, setPostFilter] = useState<'newest' | 'random' | 'all'>('newest');
   const [isPostLoading, setIsPostLoading] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  
+  // Category & search state
+  const [postCategory, setPostCategory] = useState<string>('');
+  const [customCategory, setCustomCategory] = useState('');
+  const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [postSearchQuery, setPostSearchQuery] = useState('');
+  const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
 
   // Messages state
   const [conversations, setConversations] = useState<TradingConversation[]>([]);
@@ -284,10 +302,17 @@ const Trading = () => {
   // Fetch posts
   const fetchPosts = useCallback(async () => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('transaction_posts')
         .select('*')
         .order('created_at', { ascending: false });
+
+      // Category filter
+      if (filterCategory && filterCategory !== 'all') {
+        query = query.eq('category', filterCategory);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
@@ -299,10 +324,26 @@ const Trading = () => {
           .in('id', userIds);
 
         const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
-        const postsWithProfiles = data.map(post => ({
+        let postsWithProfiles = data.map(post => ({
           ...post,
           profiles: profileMap.get(post.user_id)
         }));
+
+        // Keyword search ranking
+        if (postSearchQuery.trim()) {
+          const keywords = postSearchQuery.trim().toLowerCase().split(/\s+/);
+          postsWithProfiles = postsWithProfiles
+            .map(post => {
+              const content = (post.content || '').toLowerCase();
+              const matchCount = keywords.filter(kw => content.includes(kw)).length;
+              return { ...post, _matchCount: matchCount };
+            })
+            .filter(post => post._matchCount > 0)
+            .sort((a, b) => {
+              if (b._matchCount !== a._matchCount) return b._matchCount - a._matchCount;
+              return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+            });
+        }
 
         let result = postsWithProfiles;
         if (postFilter === 'random') {
@@ -317,7 +358,25 @@ const Trading = () => {
     } catch (error) {
       console.error('Error fetching trading posts:', error);
     }
-  }, [postFilter]);
+  }, [postFilter, filterCategory, postSearchQuery]);
+
+  // Fetch category counts
+  const fetchCategoryCounts = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('transaction_posts')
+        .select('category');
+      if (error) throw error;
+      const counts: Record<string, number> = {};
+      (data || []).forEach(p => {
+        const cat = p.category || 'khac';
+        counts[cat] = (counts[cat] || 0) + 1;
+      });
+      setCategoryCounts(counts);
+    } catch (e) {
+      console.error('Error fetching category counts:', e);
+    }
+  }, []);
 
   // Fetch conversations
   const fetchConversations = useCallback(async () => {
@@ -458,6 +517,10 @@ const Trading = () => {
   }, [fetchPosts]);
 
   useEffect(() => {
+    fetchCategoryCounts();
+  }, [fetchCategoryCounts]);
+
+  useEffect(() => {
     if (user) {
       fetchConversations();
     }
@@ -558,12 +621,15 @@ const Trading = () => {
         imageUrl = publicUrl;
       }
 
+      const finalCategory = postCategory === 'khac' ? (customCategory.trim() || 'khac') : (postCategory || null);
+
       const { error } = await supabase
         .from('transaction_posts')
         .insert({
           user_id: user.id,
           content: postContent.trim() || null,
-          image_url: imageUrl
+          image_url: imageUrl,
+          category: finalCategory
         });
 
       if (error) throw error;
@@ -571,7 +637,10 @@ const Trading = () => {
       setPostContent('');
       setPostImage(null);
       setPostImagePreview(null);
+      setPostCategory('');
+      setCustomCategory('');
       fetchPosts();
+      fetchCategoryCounts();
 
       toast({
         title: 'Thành công',
@@ -1815,11 +1884,36 @@ const Trading = () => {
                 <h2 className="font-semibold">Đăng bài giao dịch</h2>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Category Selection */}
+                <Select value={postCategory} onValueChange={setPostCategory}>
+                  <SelectTrigger className="rounded-xl">
+                    <div className="flex items-center gap-2">
+                      <Tag className="w-4 h-4 text-muted-foreground" />
+                      <SelectValue placeholder="Chọn chủ đề" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent className="glass">
+                    {CATEGORIES.map(cat => (
+                      <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
+                    ))}
+                    <SelectItem value="khac">Khác (tùy chỉnh)</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {postCategory === 'khac' && (
+                  <Input
+                    placeholder="Nhập chủ đề tùy chỉnh..."
+                    value={customCategory}
+                    onChange={(e) => setCustomCategory(e.target.value)}
+                    className="rounded-xl"
+                  />
+                )}
+
                 <Textarea
                   placeholder="Nội dung giao dịch..."
                   value={postContent}
                   onChange={(e) => setPostContent(e.target.value)}
-                  className="min-h-[100px] resize-none"
+                  className="min-h-[100px] resize-none rounded-xl"
                 />
 
                 {postImagePreview && (
@@ -1848,6 +1942,7 @@ const Trading = () => {
                     variant="ghost"
                     size="sm"
                     onClick={() => postImageInputRef.current?.click()}
+                    className="rounded-xl"
                   >
                     <ImagePlus className="w-5 h-5 mr-2" />
                     Thêm ảnh
@@ -1862,6 +1957,7 @@ const Trading = () => {
                   <Button
                     onClick={handleCreatePost}
                     disabled={isPostLoading || (!postContent.trim() && !postImage)}
+                    className="rounded-xl gradient-primary"
                   >
                     {isPostLoading ? 'Đang đăng...' : 'Đăng bài'}
                   </Button>
@@ -1869,32 +1965,75 @@ const Trading = () => {
               </CardContent>
             </Card>
 
-            {/* Filter */}
-            <div className="flex gap-2">
-              <Button
-                variant={postFilter === 'newest' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setPostFilter('newest')}
-              >
-                <Clock className="w-4 h-4 mr-1" />
-                Mới nhất
-              </Button>
-              <Button
-                variant={postFilter === 'random' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setPostFilter('random')}
-              >
-                <Shuffle className="w-4 h-4 mr-1" />
-                Ngẫu nhiên
-              </Button>
-              <Button
-                variant={postFilter === 'all' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setPostFilter('all')}
-              >
-                <List className="w-4 h-4 mr-1" />
-                Tất cả
-              </Button>
+            {/* Category Filter & Search */}
+            <div className="space-y-3">
+              {/* Sort buttons */}
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  variant={postFilter === 'newest' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setPostFilter('newest')}
+                  className="rounded-xl"
+                >
+                  <Clock className="w-4 h-4 mr-1" />
+                  Mới nhất
+                </Button>
+                <Button
+                  variant={postFilter === 'random' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setPostFilter('random')}
+                  className="rounded-xl"
+                >
+                  <Shuffle className="w-4 h-4 mr-1" />
+                  Ngẫu nhiên
+                </Button>
+                <Button
+                  variant={postFilter === 'all' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setPostFilter('all')}
+                  className="rounded-xl"
+                >
+                  <List className="w-4 h-4 mr-1" />
+                  Tất cả
+                </Button>
+              </div>
+
+              {/* Category tags - sorted by popularity */}
+              <div className="flex gap-2 flex-wrap">
+                <Badge
+                  variant={filterCategory === 'all' ? 'default' : 'outline'}
+                  className="cursor-pointer rounded-xl px-3 py-1.5 text-sm transition-all hover:scale-105"
+                  onClick={() => setFilterCategory('all')}
+                >
+                  Tất cả
+                </Badge>
+                {[...CATEGORIES, { value: 'khac', label: 'Khác', color: 'bg-muted text-muted-foreground border-border' }]
+                  .sort((a, b) => (categoryCounts[b.value] || 0) - (categoryCounts[a.value] || 0))
+                  .map(cat => (
+                    <Badge
+                      key={cat.value}
+                      variant="outline"
+                      className={`cursor-pointer rounded-xl px-3 py-1.5 text-sm transition-all hover:scale-105 ${
+                        filterCategory === cat.value ? cat.color + ' border' : ''
+                      }`}
+                      onClick={() => setFilterCategory(cat.value)}
+                    >
+                      {cat.label}
+                      {categoryCounts[cat.value] ? ` (${categoryCounts[cat.value]})` : ''}
+                    </Badge>
+                  ))}
+              </div>
+
+              {/* Search bar */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Tìm kiếm bài viết..."
+                  value={postSearchQuery}
+                  onChange={(e) => setPostSearchQuery(e.target.value)}
+                  className="pl-9 rounded-xl"
+                />
+              </div>
             </div>
 
             {/* Posts List */}
@@ -1916,10 +2055,19 @@ const Trading = () => {
                           <div className="flex items-center gap-2 flex-wrap">
                             <Link
                               to={`/profile/${post.user_id}`}
-                              className="font-semibold hover:underline"
+                              className="font-semibold hover:underline max-w-[150px] truncate inline-block"
                             >
                               {post.profiles?.display_name || post.profiles?.username || 'Người dùng'}
                             </Link>
+                            {/* Category Badge - same row as name */}
+                            {post.category && (() => {
+                              const catInfo = CATEGORIES.find(c => c.value === post.category) || { label: post.category, color: 'bg-muted text-muted-foreground border-border' };
+                              return (
+                                <Badge variant="outline" className={`rounded-lg text-[10px] px-1.5 py-0 ${catInfo.color} border`}>
+                                  {catInfo.label}
+                                </Badge>
+                              );
+                            })()}
                             <span className="text-xs text-muted-foreground">
                               {formatDistanceToNow(new Date(post.created_at), {
                                 addSuffix: true,

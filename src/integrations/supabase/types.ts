@@ -95,6 +95,38 @@ export type Database = {
         }
         Relationships: []
       }
+      comment_reactions: {
+        Row: {
+          comment_id: string
+          created_at: string
+          emoji: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          comment_id: string
+          created_at?: string
+          emoji: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          comment_id?: string
+          created_at?: string
+          emoji?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comment_reactions_comment_id_fkey"
+            columns: ["comment_id"]
+            isOneToOne: false
+            referencedRelation: "comments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       comments: {
         Row: {
           content: string
@@ -601,26 +633,32 @@ export type Database = {
       }
       transaction_posts: {
         Row: {
+          category: string | null
           content: string | null
           created_at: string | null
           id: string
           image_url: string | null
+          search_vector: unknown
           updated_at: string | null
           user_id: string
         }
         Insert: {
+          category?: string | null
           content?: string | null
           created_at?: string | null
           id?: string
           image_url?: string | null
+          search_vector?: unknown
           updated_at?: string | null
           user_id: string
         }
         Update: {
+          category?: string | null
           content?: string | null
           created_at?: string | null
           id?: string
           image_url?: string | null
+          search_vector?: unknown
           updated_at?: string | null
           user_id?: string
         }
@@ -715,6 +753,9 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user"
+      message_status: "sent" | "delivered" | "read"
+      post_visibility: "public" | "private"
+      report_status: "open" | "resolved" | "banned"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -843,6 +884,9 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user"],
+      message_status: ["sent", "delivered", "read"],
+      post_visibility: ["public", "private"],
+      report_status: ["open", "resolved", "banned"],
     },
   },
 } as const

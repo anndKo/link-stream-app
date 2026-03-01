@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -8,13 +8,54 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { toast } from '@/hooks/use-toast';
-import { Settings as SettingsIcon, User, Save, Hash, Mail } from 'lucide-react';
+import { Settings as SettingsIcon, User, Save, Hash, Camera } from 'lucide-react';
+import { AvatarCropDialog } from '@/components/ui/avatar-crop-dialog';
 
 const Settings = () => {
-  const { profile, refreshProfile } = useAuth();
+  const { user, profile, refreshProfile } = useAuth();
   const [displayName, setDisplayName] = useState(profile?.display_name || '');
   const [bio, setBio] = useState(profile?.bio || '');
   const [isSaving, setIsSaving] = useState(false);
+  const [cropDialogOpen, setCropDialogOpen] = useState(false);
+  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
+  const [isUpdatingAvatar, setIsUpdatingAvatar] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAvatarSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      toast({ title: 'Lỗi', description: 'Chỉ hỗ trợ JPG, PNG, WEBP', variant: 'destructive' });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => { setCropImageSrc(reader.result as string); setCropDialogOpen(true); };
+    reader.readAsDataURL(file);
+    if (avatarInputRef.current) avatarInputRef.current.value = '';
+  };
+
+  const handleCroppedAvatar = async (blob: Blob) => {
+    if (!user) return;
+    setCropDialogOpen(false);
+    setIsUpdatingAvatar(true);
+    try {
+      const fileName = `${user.id}/avatar.jpg`;
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, blob, { upsert: true, contentType: 'image/jpeg' });
+      if (uploadError) throw uploadError;
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
+      const newUrl = `${publicUrl}?t=${Date.now()}`;
+      const { error: updateError } = await supabase.from('profiles').update({ avatar_url: newUrl }).eq('id', user.id);
+      if (updateError) throw updateError;
+      await refreshProfile();
+      toast({ title: 'Cập nhật thành công', description: 'Ảnh đại diện đã được cập nhật.' });
+    } catch (error) {
+      console.error('Error updating avatar:', error);
+      toast({ title: 'Lỗi', description: 'Không thể cập nhật ảnh đại diện.', variant: 'destructive' });
+    } finally {
+      setIsUpdatingAvatar(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!profile) return;
@@ -64,12 +105,18 @@ const Settings = () => {
         {/* Profile Card */}
         <div className="glass rounded-2xl p-6 animate-fade-in">
           <div className="flex items-center gap-4 mb-6 pb-6 border-b border-border">
-            <Avatar className="h-20 w-20 ring-4 ring-primary/20">
-              <AvatarImage src={profile?.avatar_url || ''} />
-              <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
-                {profile?.display_name?.charAt(0).toUpperCase() || 'U'}
-              </AvatarFallback>
-            </Avatar>
+            <div className="relative">
+              <Avatar className={`h-20 w-20 ring-4 ring-primary/20 ${isUpdatingAvatar ? 'opacity-50' : ''}`}>
+                <AvatarImage src={profile?.avatar_url || ''} />
+                <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
+                  {profile?.display_name?.charAt(0).toUpperCase() || 'U'}
+                </AvatarFallback>
+              </Avatar>
+              <input ref={avatarInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleAvatarSelect} className="hidden" />
+              <Button size="icon" className="absolute -bottom-1 -right-1 rounded-full h-8 w-8 gradient-primary shadow-glow" onClick={() => avatarInputRef.current?.click()} disabled={isUpdatingAvatar}>
+                <Camera className="w-4 h-4" />
+              </Button>
+            </div>
             <div>
               <h2 className="text-xl font-bold">{profile?.display_name}</h2>
               <p className="text-muted-foreground">@{profile?.username}</p>
@@ -121,12 +168,18 @@ const Settings = () => {
               <Label>Giới thiệu</Label>
               <Textarea
                 value={bio}
-                onChange={(e) => setBio(e.target.value)}
+                onChange={(e) => {
+                  const words = e.target.value.split(/\s+/).filter(Boolean);
+                  if (words.length <= 500 || e.target.value.length < bio.length) {
+                    setBio(e.target.value);
+                  }
+                }}
                 placeholder="Viết gì đó về bản thân..."
-                className="rounded-xl resize-none min-h-[100px]"
-                maxLength={200}
+                className="rounded-xl resize-none min-h-[120px]"
               />
-              <p className="text-xs text-muted-foreground text-right">{bio.length}/200</p>
+              <p className="text-xs text-muted-foreground text-right">
+                {bio.split(/\s+/).filter(Boolean).length}/500 từ
+              </p>
             </div>
 
             <Button
@@ -140,6 +193,15 @@ const Settings = () => {
           </div>
         </div>
       </div>
+
+      {cropImageSrc && (
+        <AvatarCropDialog
+          open={cropDialogOpen}
+          onClose={() => setCropDialogOpen(false)}
+          imageSrc={cropImageSrc}
+          onCropComplete={handleCroppedAvatar}
+        />
+      )}
     </MainLayout>
   );
 };

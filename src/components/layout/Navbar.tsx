@@ -389,8 +389,19 @@ export const Navbar = () => {
 
           {/* Right Section */}
           <div className="flex items-center gap-2">
-            {/* Theme Toggle */}
-            <ThemeToggle />
+            {/* Theme Toggle - Desktop only */}
+            <div className="hidden md:block">
+              <ThemeToggle />
+            </div>
+            {/* Messages icon - before bell */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative rounded-xl"
+              onClick={() => navigate('/messages')}
+            >
+              <MessageCircle className="w-5 h-5" />
+            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="relative rounded-xl">
@@ -610,6 +621,16 @@ export const Navbar = () => {
                 <span className="font-medium">{item.label}</span>
               </Link>
             ))}
+            {/* Theme Toggle in mobile menu */}
+            <div className="flex items-center gap-3 px-4 py-3 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary transition-all duration-200 cursor-pointer"
+              onClick={() => {
+                const toggle = document.querySelector('[data-theme-toggle]') as HTMLButtonElement;
+                toggle?.click();
+              }}
+            >
+              <ThemeToggle />
+              <span className="font-medium">Chế độ tối</span>
+            </div>
           </div>
         </div>
       )}

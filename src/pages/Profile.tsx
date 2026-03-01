@@ -7,11 +7,44 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Profile as ProfileType, Post, Friendship } from '@/types/database';
-import { MessageCircle, UserPlus, UserCheck, Camera, Calendar, Hash, Edit } from 'lucide-react';
+import { MessageCircle, UserPlus, UserCheck, Camera, Calendar, Hash, Edit, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { AvatarCropDialog } from '@/components/ui/avatar-crop-dialog';
+
+const BioDisplay = ({ bio }: { bio: string }) => {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="mt-3 max-w-lg">
+      <div
+        className={cn(
+          'text-foreground whitespace-pre-wrap break-words transition-all',
+          !expanded && 'line-clamp-3',
+          expanded && 'max-h-[15rem] overflow-y-auto'
+        )}
+      >
+        {bio}
+      </div>
+      {bio.split('\n').length > 3 || bio.length > 200 ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mt-1 h-7 px-2 text-xs text-primary gap-1"
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? (
+            <>Thu gọn <ChevronUp className="w-3 h-3" /></>
+          ) : (
+            <>Xem thêm <ChevronDown className="w-3 h-3" /></>
+          )}
+        </Button>
+      ) : null}
+    </div>
+  );
+};
 
 const Profile = () => {
   const { id } = useParams<{ id: string }>();
@@ -21,6 +54,8 @@ const Profile = () => {
   const [friendship, setFriendship] = useState<Friendship | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdatingAvatar, setIsUpdatingAvatar] = useState(false);
+  const [cropDialogOpen, setCropDialogOpen] = useState(false);
+  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const isOwnProfile = user?.id === id;
@@ -154,27 +189,42 @@ const Profile = () => {
     }
   };
 
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
 
-    if (file.size > 2 * 1024 * 1024) {
+    // Accept JPG, PNG, WEBP only
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
       toast({
         title: 'Lỗi',
-        description: 'Ảnh không được vượt quá 2MB',
+        description: 'Chỉ hỗ trợ định dạng JPG, PNG, WEBP',
         variant: 'destructive',
       });
       return;
     }
 
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCropImageSrc(reader.result as string);
+      setCropDialogOpen(true);
+    };
+    reader.readAsDataURL(file);
+    // Reset input
+    if (avatarInputRef.current) avatarInputRef.current.value = '';
+  };
+
+  const handleCroppedAvatar = async (croppedBlob: Blob) => {
+    if (!user) return;
+
+    setCropDialogOpen(false);
     setIsUpdatingAvatar(true);
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${user.id}/avatar.${fileExt}`;
+      const fileName = `${user.id}/avatar.jpg`;
 
       const { error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(fileName, file, { upsert: true });
+        .upload(fileName, croppedBlob, { upsert: true, contentType: 'image/jpeg' });
 
       if (uploadError) throw uploadError;
 
@@ -182,15 +232,16 @@ const Profile = () => {
         .from('avatars')
         .getPublicUrl(fileName);
 
+      const newUrl = `${publicUrl}?t=${Date.now()}`;
       const { error: updateError } = await supabase
         .from('profiles')
-        .update({ avatar_url: `${publicUrl}?t=${Date.now()}` })
+        .update({ avatar_url: newUrl })
         .eq('id', user.id);
 
       if (updateError) throw updateError;
 
       await refreshProfile();
-      setProfile((prev) => prev ? { ...prev, avatar_url: `${publicUrl}?t=${Date.now()}` } : null);
+      setProfile((prev) => prev ? { ...prev, avatar_url: newUrl } : null);
 
       toast({
         title: 'Cập nhật thành công',
@@ -315,7 +366,7 @@ const Profile = () => {
                   <input
                     ref={avatarInputRef}
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/webp"
                     onChange={handleAvatarChange}
                     className="hidden"
                   />
@@ -352,7 +403,7 @@ const Profile = () => {
                   </div>
                 </div>
                 {profile.bio && (
-                  <p className="mt-3 text-foreground max-w-lg">{profile.bio}</p>
+                  <BioDisplay bio={profile.bio} />
                 )}
               </div>
 
@@ -385,6 +436,16 @@ const Profile = () => {
           )}
         </div>
       </div>
+
+      {/* Avatar Crop Dialog */}
+      {cropImageSrc && (
+        <AvatarCropDialog
+          open={cropDialogOpen}
+          onClose={() => setCropDialogOpen(false)}
+          imageSrc={cropImageSrc}
+          onCropComplete={handleCroppedAvatar}
+        />
+      )}
     </MainLayout>
   );
 };
