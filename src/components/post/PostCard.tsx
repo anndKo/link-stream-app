@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, memo } from 'react';
 import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
-import { Heart, MessageCircle, Share2, MoreHorizontal, Trash2, Globe, Lock, Flag, X } from 'lucide-react';
+import { Heart, MessageCircle, Share2, MoreHorizontal, Trash2, Globe, Lock, Flag, X, Pencil, Eye, EyeOff, Users } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -18,6 +18,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from '@/components/ui/dialog';
 import {
   Select,
@@ -26,6 +27,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { CommentSection } from './CommentSection';
@@ -52,8 +63,17 @@ export const PostCard = memo(({ post, onDelete }: PostCardProps) => {
   const [reportReason, setReportReason] = useState('');
   const [reportDescription, setReportDescription] = useState('');
   const [fullscreenOpen, setFullscreenOpen] = useState(false);
+  
+  // New states for edit & delete confirmation
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [editContent, setEditContent] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  const [showVisibilityDialog, setShowVisibilityDialog] = useState(false);
+  const [editVisibility, setEditVisibility] = useState<string>('public');
+  const [currentVisibility, setCurrentVisibility] = useState<string>((post as any).visibility || 'public');
+  const [currentContent, setCurrentContent] = useState(post.content || '');
 
-  // Disable body scroll when fullscreen is open
   useEffect(() => {
     if (fullscreenOpen) {
       document.body.style.overflow = 'hidden';
@@ -63,7 +83,8 @@ export const PostCard = memo(({ post, onDelete }: PostCardProps) => {
     return () => { document.body.style.overflow = ''; };
   }, [fullscreenOpen]);
 
-  const canDelete = user?.id === post.user_id || isAdmin;
+  const isOwner = user?.id === post.user_id;
+  const canDelete = isOwner || isAdmin;
 
   const fetchLikeStatus = useCallback(async () => {
     if (!post.id) return;
@@ -137,8 +158,40 @@ export const PostCard = memo(({ post, onDelete }: PostCardProps) => {
       toast({ title: 'Lỗi', description: 'Không thể xóa bài viết. Vui lòng thử lại.', variant: 'destructive' });
     } finally {
       setIsDeleting(false);
+      setShowDeleteConfirm(false);
     }
   }, [canDelete, post.id, onDelete]);
+
+  const handleEditPost = useCallback(async () => {
+    if (!isOwner || !editContent.trim()) return;
+    setIsEditing(true);
+    try {
+      const { error } = await supabase.from('posts').update({ content: editContent.trim() }).eq('id', post.id);
+      if (error) throw error;
+      setCurrentContent(editContent.trim());
+      toast({ title: 'Đã cập nhật bài viết' });
+      setShowEditDialog(false);
+      onDelete?.(); // refresh
+    } catch (error) {
+      toast({ title: 'Lỗi', description: 'Không thể cập nhật bài viết.', variant: 'destructive' });
+    } finally {
+      setIsEditing(false);
+    }
+  }, [isOwner, editContent, post.id, onDelete]);
+
+  const handleEditVisibility = useCallback(async () => {
+    if (!isOwner) return;
+    try {
+      const { error } = await supabase.from('posts').update({ visibility: editVisibility }).eq('id', post.id);
+      if (error) throw error;
+      setCurrentVisibility(editVisibility);
+      toast({ title: 'Đã cập nhật quyền xem' });
+      setShowVisibilityDialog(false);
+      onDelete?.(); // refresh
+    } catch (error) {
+      toast({ title: 'Lỗi', description: 'Không thể cập nhật quyền xem.', variant: 'destructive' });
+    }
+  }, [isOwner, editVisibility, post.id, onDelete]);
 
   const handleShare = useCallback(async () => {
     try {
@@ -168,7 +221,8 @@ export const PostCard = memo(({ post, onDelete }: PostCardProps) => {
   }, [user, post.id, reportReason, reportDescription]);
 
   const profile = post.profiles;
-  const isPrivate = (post as any).visibility === 'private';
+  const isPrivate = currentVisibility === 'private';
+  const isFriends = currentVisibility === 'friends';
   const displayName = profile?.display_name || profile?.username || 'Người dùng';
 
   const actionsBar = (
@@ -218,7 +272,7 @@ export const PostCard = memo(({ post, onDelete }: PostCardProps) => {
               </h3>
               <p className="text-sm text-muted-foreground flex items-center gap-1">
                 @{profile?.username || 'unknown'} · {formatDistanceToNow(new Date(post.created_at), { addSuffix: true, locale: vi })}
-                {isPrivate ? <Lock className="w-3 h-3 ml-1" /> : <Globe className="w-3 h-3 ml-1" />}
+                {isPrivate ? <Lock className="w-3 h-3 ml-1" /> : isFriends ? <Users className="w-3 h-3 ml-1" /> : <Globe className="w-3 h-3 ml-1" />}
               </p>
             </div>
           </Link>
@@ -230,10 +284,38 @@ export const PostCard = memo(({ post, onDelete }: PostCardProps) => {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="glass">
+              {isOwner && (
+                <>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setEditVisibility(currentVisibility);
+                      setShowVisibilityDialog(true);
+                    }}
+                    className="cursor-pointer"
+                  >
+                    {isPrivate ? <Eye className="w-4 h-4 mr-2" /> : <EyeOff className="w-4 h-4 mr-2" />}
+                    Chỉnh sửa quyền xem
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setEditContent(currentContent);
+                      setShowEditDialog(true);
+                    }}
+                    className="cursor-pointer"
+                  >
+                    <Pencil className="w-4 h-4 mr-2" />
+                    Chỉnh sửa bài viết
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
               {canDelete && (
-                <DropdownMenuItem onClick={handleDelete} disabled={isDeleting} className="text-destructive focus:text-destructive cursor-pointer">
+                <DropdownMenuItem
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="text-destructive focus:text-destructive cursor-pointer"
+                >
                   <Trash2 className="w-4 h-4 mr-2" />
-                  {isDeleting ? 'Đang xóa...' : 'Xóa bài viết'}
+                  Xóa bài viết
                 </DropdownMenuItem>
               )}
               {user && user.id !== post.user_id && (
@@ -250,44 +332,30 @@ export const PostCard = memo(({ post, onDelete }: PostCardProps) => {
         </div>
 
         {/* Content */}
-        {post.content && (
-          <p className="text-foreground mb-4 whitespace-pre-wrap leading-relaxed">{post.content}</p>
+        {currentContent && (
+          <p className="text-foreground mb-4 whitespace-pre-wrap leading-relaxed">{currentContent}</p>
         )}
 
-        {/* Image - full original size */}
+        {/* Image */}
         {post.image_url && (
-          <div
-            className="mb-4 rounded-xl overflow-hidden cursor-pointer"
-            onClick={() => setFullscreenOpen(true)}
-          >
-            <img
-              src={post.image_url}
-              alt="Post image"
-              className="w-full h-auto object-contain hover:scale-[1.02] transition-transform duration-500"
-              loading="lazy"
-            />
+          <div className="mb-4 rounded-xl overflow-hidden cursor-pointer" onClick={() => setFullscreenOpen(true)}>
+            <img src={post.image_url} alt="Post image" className="w-full h-auto object-contain hover:scale-[1.02] transition-transform duration-500" loading="lazy" />
           </div>
         )}
 
-        {/* Actions */}
         {actionsBar}
-
-        {/* Comments Section */}
         <CommentSection postId={post.id} isOpen={showComments} />
       </article>
 
       {/* Fullscreen Post View */}
       {fullscreenOpen && (
         <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col animate-fade-in" style={{ overflow: 'hidden' }}>
-          {/* Close button */}
           <div className="flex justify-end p-4 sticky top-0 z-10 flex-shrink-0">
             <Button variant="ghost" size="icon" className="rounded-full h-10 w-10 bg-secondary/80" onClick={() => setFullscreenOpen(false)}>
               <X className="w-5 h-5" />
             </Button>
           </div>
-
           <div className="flex-1 max-w-3xl mx-auto w-full px-4 pb-6 space-y-4 overflow-y-auto">
-            {/* Post header */}
             <div className="flex items-center gap-3">
               <Avatar className="h-12 w-12 ring-2 ring-primary/20">
                 <AvatarImage src={profile?.avatar_url || ''} />
@@ -300,25 +368,95 @@ export const PostCard = memo(({ post, onDelete }: PostCardProps) => {
                 </p>
               </div>
             </div>
-
-            {/* Content */}
-            {post.content && (
-              <p className="text-foreground whitespace-pre-wrap leading-relaxed text-lg">{post.content}</p>
-            )}
-
-            {/* Full image */}
-            {post.image_url && (
-              <img src={post.image_url} alt="Post image" className="w-full h-auto rounded-xl" />
-            )}
-
-            {/* Actions */}
+            {currentContent && <p className="text-foreground whitespace-pre-wrap leading-relaxed text-lg">{currentContent}</p>}
+            {post.image_url && <img src={post.image_url} alt="Post image" className="w-full h-auto rounded-xl" />}
             {actionsBar}
-
-            {/* Comments */}
             <CommentSection postId={post.id} isOpen={true} />
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent className="glass">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận xóa bài viết</AlertDialogTitle>
+            <AlertDialogDescription>
+              Bạn có chắc chắn muốn xóa bài viết này? Hành động này không thể hoàn tác.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-xl">Hủy</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} disabled={isDeleting} className="rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {isDeleting ? 'Đang xóa...' : 'Xóa bài viết'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Edit Post Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="glass">
+          <DialogHeader>
+            <DialogTitle>Chỉnh sửa bài viết</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Textarea
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              placeholder="Nội dung bài viết..."
+              className="min-h-[120px] rounded-xl"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditDialog(false)} className="rounded-xl">Hủy</Button>
+            <Button onClick={handleEditPost} disabled={isEditing || !editContent.trim()} className="rounded-xl gradient-primary">
+              {isEditing ? 'Đang lưu...' : 'Lưu thay đổi'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Visibility Dialog */}
+      <Dialog open={showVisibilityDialog} onOpenChange={setShowVisibilityDialog}>
+        <DialogContent className="glass">
+          <DialogHeader>
+            <DialogTitle>Chỉnh sửa quyền xem</DialogTitle>
+            <DialogDescription>Chọn ai có thể xem bài viết này</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Select value={editVisibility} onValueChange={setEditVisibility}>
+              <SelectTrigger className="rounded-xl">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="public">
+                  <div className="flex items-center gap-2">
+                    <Globe className="w-4 h-4" />
+                    Công khai
+                  </div>
+                </SelectItem>
+                <SelectItem value="private">
+                  <div className="flex items-center gap-2">
+                    <Lock className="w-4 h-4" />
+                    Riêng tư
+                  </div>
+                </SelectItem>
+                <SelectItem value="friends">
+                  <div className="flex items-center gap-2">
+                    <Users className="w-4 h-4" />
+                    Bạn bè
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowVisibilityDialog(false)} className="rounded-xl">Hủy</Button>
+            <Button onClick={handleEditVisibility} className="rounded-xl gradient-primary">Lưu</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Report Dialog */}
       <Dialog open={showReportDialog} onOpenChange={setShowReportDialog}>

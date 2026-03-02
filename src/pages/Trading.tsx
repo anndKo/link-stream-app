@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
+import { TradingPostCard } from '@/components/post/TradingPostCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -2067,116 +2068,35 @@ const Trading = () => {
                         onClick={() => setFilterCategory(cat.value)}
                       >
                         {cat.label}
-                        {categoryCounts[cat.value] ? ` (${categoryCounts[cat.value]})` : ''}
                       </Badge>
                     ))}
                 </div>
               )}
 
-              {/* Search bar */}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Tìm kiếm bài viết..."
-                  value={postSearchQuery}
-                  onChange={(e) => setPostSearchQuery(e.target.value)}
-                  className="pl-9 rounded-xl"
-                />
-              </div>
+              {/* Search bar - toggles with categories */}
+              {showCategories && (
+                <div className="relative animate-fade-in">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Tìm kiếm bài viết..."
+                    value={postSearchQuery}
+                    onChange={(e) => setPostSearchQuery(e.target.value)}
+                    className="pl-9 rounded-xl"
+                  />
+                </div>
+              )}
             </div>
 
             {/* Posts List */}
             <div className="space-y-4">
               {posts.map((post) => (
-                <Card key={post.id} className="glass">
-                  <CardContent className="pt-4">
-                    <div className="flex items-start gap-3">
-                      <Link to={`/profile/${post.user_id}`}>
-                        <Avatar className="h-10 w-10">
-                          <AvatarImage src={post.profiles?.avatar_url || ''} />
-                          <AvatarFallback className="bg-primary text-primary-foreground">
-                            {(post.profiles?.display_name || post.profiles?.username || 'U').charAt(0).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                      </Link>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <Link
-                              to={`/profile/${post.user_id}`}
-                              className="font-semibold hover:underline max-w-[150px] truncate inline-block"
-                            >
-                              {post.profiles?.display_name || post.profiles?.username || 'Người dùng'}
-                            </Link>
-                            {/* Category Badge - same row as name */}
-                            {post.category && (() => {
-                              const catInfo = CATEGORIES.find(c => c.value === post.category) || { label: post.category, color: 'bg-muted text-muted-foreground border-border' };
-                              return (
-                                <Badge variant="outline" className={`rounded-lg text-[10px] px-1.5 py-0 ${catInfo.color} border`}>
-                                  {catInfo.label}
-                                </Badge>
-                              );
-                            })()}
-                            <span className="text-xs text-muted-foreground">
-                              {formatDistanceToNow(new Date(post.created_at), {
-                                addSuffix: true,
-                                locale: vi
-                              })}
-                            </span>
-                          </div>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
-                                <MoreVertical className="w-4 h-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="glass">
-                              {user?.id === post.user_id ? (
-                                <DropdownMenuItem
-                                  onClick={() => handleDeletePost(post.id)}
-                                  className="text-destructive focus:text-destructive cursor-pointer"
-                                >
-                                  <Trash2 className="w-4 h-4 mr-2" />
-                                  Xóa bài viết
-                                </DropdownMenuItem>
-                              ) : (
-                                <DropdownMenuItem
-                                  onClick={() => setShowReportDialog(true)}
-                                  className="text-destructive focus:text-destructive cursor-pointer"
-                                >
-                                  <Flag className="w-4 h-4 mr-2" />
-                                  Báo cáo bài viết
-                                </DropdownMenuItem>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                        {post.content && (
-                          <p className="mt-2 text-sm whitespace-pre-wrap">{post.content}</p>
-                        )}
-                        {post.image_url && (
-                          <img
-                            src={post.image_url}
-                            alt="Post"
-                            className="mt-3 rounded-lg max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                            onClick={() => setLightboxImage(post.image_url)}
-                          />
-                        )}
-                        {user?.id !== post.user_id && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="mt-3"
-                            onClick={() => startConversation(post.user_id)}
-                          >
-                            <MessageCircle className="w-4 h-4 mr-1" />
-                            Nhắn tin
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                <TradingPostCard
+                  key={post.id}
+                  post={post}
+                  onDelete={fetchPosts}
+                  onImageClick={setLightboxImage}
+                  onStartConversation={startConversation}
+                />
               ))}
 
               {posts.length === 0 && (

@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, memo } from 'react';
-import { Image, X, Send, Globe, Lock } from 'lucide-react';
+import { Image, X, Send, Globe, Lock, Users } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -12,8 +12,8 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+  SelectValue } from
+'@/components/ui/select';
 
 interface CreatePostProps {
   onPostCreated?: () => void;
@@ -25,7 +25,7 @@ export const CreatePost = memo(({ onPostCreated }: CreatePostProps) => {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [visibility, setVisibility] = useState<'public' | 'private'>('public');
+  const [visibility, setVisibility] = useState<'public' | 'private' | 'friends'>('public');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -36,7 +36,7 @@ export const CreatePost = memo(({ onPostCreated }: CreatePostProps) => {
         toast({
           title: 'Lỗi',
           description: 'Ảnh không được vượt quá 5MB',
-          variant: 'destructive',
+          variant: 'destructive'
         });
         return;
       }
@@ -68,12 +68,12 @@ export const CreatePost = memo(({ onPostCreated }: CreatePostProps) => {
         textarea.focus();
       }, 0);
     } else {
-      setContent(prev => prev + emoji);
+      setContent((prev) => prev + emoji);
     }
   }, [content]);
 
   const handleSubmit = useCallback(async () => {
-    if (!user || (!content.trim() && !imageFile)) return;
+    if (!user || !content.trim() && !imageFile) return;
 
     setIsSubmitting(true);
     try {
@@ -82,38 +82,38 @@ export const CreatePost = memo(({ onPostCreated }: CreatePostProps) => {
       if (imageFile) {
         const fileExt = imageFile.name.split('.').pop();
         const fileName = `${user.id}/${Date.now()}.${fileExt}`;
-        
-        const { error: uploadError } = await supabase.storage
-          .from('posts')
-          .upload(fileName, imageFile);
+
+        const { error: uploadError } = await supabase.storage.
+        from('posts').
+        upload(fileName, imageFile);
 
         if (uploadError) throw uploadError;
 
-        const { data: { publicUrl } } = supabase.storage
-          .from('posts')
-          .getPublicUrl(fileName);
+        const { data: { publicUrl } } = supabase.storage.
+        from('posts').
+        getPublicUrl(fileName);
 
         imageUrl = publicUrl;
       }
 
-      const { error } = await supabase
-        .from('posts')
-        .insert({
-          user_id: user.id,
-          content: content.trim() || null,
-          image_url: imageUrl,
-          visibility: visibility,
-        });
+      const { error } = await supabase.
+      from('posts').
+      insert({
+        user_id: user.id,
+        content: content.trim() || null,
+        image_url: imageUrl,
+        visibility: visibility
+      });
 
       if (error) throw error;
 
       setContent('');
       removeImage();
       setVisibility('public');
-      
+
       toast({
         title: 'Đăng bài thành công!',
-        description: visibility === 'public' ? 'Bài viết của bạn đã được đăng công khai.' : 'Bài viết riêng tư đã được lưu.',
+        description: visibility === 'public' ? 'Bài viết của bạn đã được đăng công khai.' : visibility === 'friends' ? 'Bài viết chỉ bạn bè mới xem được.' : 'Bài viết riêng tư đã được lưu.'
       });
 
       onPostCreated?.();
@@ -122,7 +122,7 @@ export const CreatePost = memo(({ onPostCreated }: CreatePostProps) => {
       toast({
         title: 'Lỗi',
         description: 'Không thể đăng bài. Vui lòng thử lại.',
-        variant: 'destructive',
+        variant: 'destructive'
       });
     } finally {
       setIsSubmitting(false);
@@ -145,26 +145,26 @@ export const CreatePost = memo(({ onPostCreated }: CreatePostProps) => {
             value={content}
             onChange={(e) => setContent(e.target.value)}
             placeholder="Bạn đang nghĩ gì?"
-            className="min-h-[100px] resize-none border-0 bg-secondary/50 rounded-xl focus-visible:ring-primary"
-          />
+            className="min-h-[100px] resize-none border-0 bg-secondary/50 rounded-xl focus-visible:ring-primary" />
 
-          {imagePreview && (
-            <div className="relative inline-block">
+
+          {imagePreview &&
+          <div className="relative inline-block">
               <img
-                src={imagePreview}
-                alt="Preview"
-                className="max-h-64 rounded-xl object-cover"
-              />
+              src={imagePreview}
+              alt="Preview"
+              className="max-h-64 rounded-xl object-cover" />
+
               <Button
-                variant="destructive"
-                size="icon"
-                className="absolute top-2 right-2 h-8 w-8 rounded-full"
-                onClick={removeImage}
-              >
+              variant="destructive"
+              size="icon"
+              className="absolute top-2 right-2 h-8 w-8 rounded-full"
+              onClick={removeImage}>
+
                 <X className="w-4 h-4" />
               </Button>
             </div>
-          )}
+          }
 
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex gap-2 items-center">
@@ -173,24 +173,26 @@ export const CreatePost = memo(({ onPostCreated }: CreatePostProps) => {
                 type="file"
                 accept="image/*"
                 onChange={handleImageSelect}
-                className="hidden"
-              />
+                className="hidden" />
+
               <Button
                 variant="ghost"
                 size="sm"
                 className="rounded-xl gap-2 text-primary hover:text-primary"
-                onClick={() => fileInputRef.current?.click()}
-              >
+                onClick={() => fileInputRef.current?.click()}>
+
                 <Image className="w-5 h-5" />
                 <span className="hidden sm:inline">Ảnh</span>
               </Button>
               
               <EmojiPickerPopover onEmojiSelect={handleEmojiSelect} />
 
-              <Select value={visibility} onValueChange={(v: 'public' | 'private') => setVisibility(v)}>
+              <Select value={visibility} onValueChange={(v: 'public' | 'private' | 'friends') => setVisibility(v)}>
                 <SelectTrigger className="w-auto gap-2 rounded-xl border-0 bg-secondary/50 h-9 px-3">
                   {visibility === 'public' ? (
                     <Globe className="w-4 h-4 text-primary" />
+                  ) : visibility === 'friends' ? (
+                    <Users className="w-4 h-4 text-accent" />
                   ) : (
                     <Lock className="w-4 h-4 text-warning" />
                   )}
@@ -201,6 +203,12 @@ export const CreatePost = memo(({ onPostCreated }: CreatePostProps) => {
                     <div className="flex items-center gap-2">
                       <Globe className="w-4 h-4" />
                       Công khai
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="friends">
+                    <div className="flex items-center gap-2">
+                      <Users className="w-4 h-4" />
+                      Bạn bè
                     </div>
                   </SelectItem>
                   <SelectItem value="private">
@@ -215,17 +223,17 @@ export const CreatePost = memo(({ onPostCreated }: CreatePostProps) => {
 
             <Button
               onClick={handleSubmit}
-              disabled={isSubmitting || (!content.trim() && !imageFile)}
-              className="rounded-xl gap-2 gradient-primary shadow-glow hover:shadow-lg transition-all"
-            >
+              disabled={isSubmitting || !content.trim() && !imageFile}
+              className="rounded-xl gap-2 gradient-primary shadow-glow hover:shadow-lg transition-all">
+
               <Send className="w-4 h-4" />
               {isSubmitting ? 'Đang đăng...' : 'Đăng'}
             </Button>
           </div>
         </div>
       </div>
-    </div>
-  );
+    </div>);
+
 });
 
 CreatePost.displayName = 'CreatePost';

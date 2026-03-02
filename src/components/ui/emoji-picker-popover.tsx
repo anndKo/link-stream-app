@@ -21,14 +21,14 @@ export const EmojiPickerPopover = memo(({ onEmojiSelect }: EmojiPickerPopoverPro
       <PopoverTrigger asChild>
         <Button variant="ghost" size="sm" className="rounded-xl gap-2">
           <Smile className="w-5 h-5" />
-          <span className="hidden sm:inline">Emoji</span>
+          <span className="hidden sm:inline">Cảm xúc</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent 
-        className="w-auto p-0 border-0" 
+      <PopoverContent
+        className="w-auto p-0 border-0"
         align="start"
-        sideOffset={8}
-      >
+        sideOffset={8}>
+
         <EmojiPicker
           onEmojiClick={handleEmojiClick}
           theme={Theme.AUTO}
@@ -36,11 +36,11 @@ export const EmojiPickerPopover = memo(({ onEmojiSelect }: EmojiPickerPopoverPro
           height={400}
           searchPlaceholder="Tìm emoji..."
           previewConfig={{ showPreview: false }}
-          lazyLoadEmojis
-        />
+          lazyLoadEmojis />
+
       </PopoverContent>
-    </Popover>
-  );
+    </Popover>);
+
 });
 
 EmojiPickerPopover.displayName = 'EmojiPickerPopover';

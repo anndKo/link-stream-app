@@ -132,6 +132,7 @@ export type Database = {
           content: string
           created_at: string
           id: string
+          parent_id: string | null
           post_id: string
           updated_at: string
           user_id: string
@@ -140,6 +141,7 @@ export type Database = {
           content: string
           created_at?: string
           id?: string
+          parent_id?: string | null
           post_id: string
           updated_at?: string
           user_id: string
@@ -148,16 +150,17 @@ export type Database = {
           content?: string
           created_at?: string
           id?: string
+          parent_id?: string | null
           post_id?: string
           updated_at?: string
           user_id?: string
         }
         Relationships: [
           {
-            foreignKeyName: "comments_post_id_fkey"
-            columns: ["post_id"]
+            foreignKeyName: "comments_parent_id_fkey"
+            columns: ["parent_id"]
             isOneToOne: false
-            referencedRelation: "posts"
+            referencedRelation: "comments"
             referencedColumns: ["id"]
           },
         ]
@@ -753,6 +756,9 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user"
+      message_status: "sent" | "delivered" | "read"
+      post_visibility: "public" | "private"
+      report_status: "open" | "resolved" | "banned"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -881,6 +887,9 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user"],
+      message_status: ["sent", "delivered", "read"],
+      post_visibility: ["public", "private"],
+      report_status: ["open", "resolved", "banned"],
     },
   },
 } as const

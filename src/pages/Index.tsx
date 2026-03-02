@@ -4,6 +4,7 @@ import { CreatePost } from '@/components/post/CreatePost';
 import { PostCard } from '@/components/post/PostCard';
 import { supabase } from '@/integrations/supabase/client';
 import { Post } from '@/types/database';
+import { useAuth } from '@/contexts/AuthContext';
 import { Sparkles, RefreshCw, Clock, Shuffle, List } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -11,6 +12,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 type FilterType = 'random' | 'newest' | 'all';
 
 const Index = () => {
+  const { user } = useAuth();
   const [posts, setPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<FilterType>('random');
@@ -27,16 +29,61 @@ const Index = () => {
   const fetchPosts = useCallback(async () => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
+      // Fetch public posts
+      const { data: publicData, error: publicError } = await supabase
         .from('posts')
         .select('*')
-        .eq('visibility', 'public')
+        .in('visibility', ['public'])
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (publicError) throw publicError;
 
-      // Fetch profiles separately using public_profiles view
-      const userIds = [...new Set((data || []).map(p => p.user_id))];
+      let friendsPosts: any[] = [];
+
+      // If logged in, fetch friends posts
+      if (user) {
+        // Get friend IDs
+        const { data: friendships } = await supabase
+          .from('friendships')
+          .select('requester_id, addressee_id')
+          .eq('status', 'accepted')
+          .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
+
+        const friendIds = (friendships || []).map(f =>
+          f.requester_id === user.id ? f.addressee_id : f.requester_id
+        );
+
+        if (friendIds.length > 0) {
+          const { data: fData } = await supabase
+            .from('posts')
+            .select('*')
+            .eq('visibility', 'friends')
+            .in('user_id', friendIds)
+            .order('created_at', { ascending: false });
+          friendsPosts = fData || [];
+        }
+
+        // Also get own friends-only posts
+        const { data: ownFriendsPosts } = await supabase
+          .from('posts')
+          .select('*')
+          .eq('visibility', 'friends')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+        friendsPosts = [...friendsPosts, ...(ownFriendsPosts || [])];
+      }
+
+      const allPosts = [...(publicData || []), ...friendsPosts];
+      // Deduplicate
+      const seen = new Set<string>();
+      const uniquePosts = allPosts.filter(p => {
+        if (seen.has(p.id)) return false;
+        seen.add(p.id);
+        return true;
+      });
+
+      // Fetch profiles
+      const userIds = [...new Set(uniquePosts.map(p => p.user_id))];
       const { data: profilesData } = await supabase
         .from('public_profiles')
         .select('*')
@@ -44,8 +91,7 @@ const Index = () => {
 
       const profilesMap = new Map((profilesData || []).map(p => [p.id, p]));
       
-      // Filter out posts from banned users
-      const postsWithProfiles = (data || [])
+      const postsWithProfiles = uniquePosts
         .filter(post => {
           const profile = profilesMap.get(post.user_id);
           return profile && !profile.is_banned;
@@ -61,29 +107,17 @@ const Index = () => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     fetchPosts();
 
     const channel = supabase
       .channel('posts-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'posts',
-        },
-        () => {
-          fetchPosts();
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => fetchPosts())
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [fetchPosts]);
 
   const displayedPosts = useMemo(() => {
@@ -148,10 +182,8 @@ const Index = () => {
           </div>
         </div>
 
-        {/* Create Post */}
         <CreatePost onPostCreated={fetchPosts} />
 
-        {/* Posts Feed */}
         <div className="space-y-4">
           {isLoading ? (
             <div className="space-y-4">
@@ -177,9 +209,7 @@ const Index = () => {
                 <Sparkles className="w-8 h-8 text-primary-foreground" />
               </div>
               <h3 className="text-xl font-semibold mb-2">Chưa có bài viết nào</h3>
-              <p className="text-muted-foreground">
-                Hãy là người đầu tiên chia sẻ điều gì đó!
-              </p>
+              <p className="text-muted-foreground">Hãy là người đầu tiên chia sẻ điều gì đó!</p>
             </div>
           ) : (
             displayedPosts.map((post) => (

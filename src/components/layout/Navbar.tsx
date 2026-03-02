@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, MessageCircle, User, Settings, LogOut, Menu, X, Search, Bell, Shield, UserPlus, Sparkles } from 'lucide-react';
+import { Home, MessageCircle, User, Settings, LogOut, Menu, X, Search, Bell, Shield, UserPlus, Sparkles, Reply } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -12,7 +12,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
 
 interface NotificationData {
-  type: 'friend_request' | 'unread_messages' | 'trading_messages';
+  type: 'friend_request' | 'unread_messages' | 'trading_messages' | 'comment_reply';
   count?: number;
   fromUser?: {
     id: string;
@@ -21,6 +21,9 @@ interface NotificationData {
   };
   friendshipId?: string;
   created_at?: string;
+  postId?: string;
+  postImageUrl?: string | null;
+  commentContent?: string | null;
 }
 
 export const Navbar = () => {
@@ -138,6 +141,68 @@ export const Navbar = () => {
             fromUser: sender
           });
         });
+      }
+
+      // Fetch comment replies to user's comments
+      try {
+        // Get user's comment IDs
+        const { data: userComments } = await supabase
+          .from('comments')
+          .select('id, post_id')
+          .eq('user_id', user.id);
+        
+        if (userComments && userComments.length > 0) {
+          const userCommentIds = userComments.map(c => c.id);
+          const postIds = [...new Set(userComments.map(c => c.post_id))];
+          
+          // Get replies to user's comments (not by user themselves), last 24h
+          const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+          const { data: replies } = await supabase
+            .from('comments')
+            .select('id, user_id, parent_id, content, created_at, post_id')
+            .in('parent_id', userCommentIds)
+            .neq('user_id', user.id)
+            .gte('created_at', oneDayAgo)
+            .order('created_at', { ascending: false })
+            .limit(10);
+          
+          if (replies && replies.length > 0) {
+            const replyUserIds = [...new Set(replies.map(r => r.user_id))];
+            const { data: replyProfiles } = await supabase
+              .from('public_profiles')
+              .select('id, display_name, avatar_url')
+              .in('id', replyUserIds);
+            
+            // Get post images
+            const { data: postsData } = await supabase
+              .from('posts')
+              .select('id, image_url')
+              .in('id', postIds);
+            const postMap = new Map((postsData || []).map(p => [p.id, p]));
+            
+            const profileMap = new Map((replyProfiles || []).map(p => [p.id, p]));
+            
+            replies.forEach(reply => {
+              const rProfile = profileMap.get(reply.user_id);
+              const post = postMap.get(reply.post_id);
+              if (rProfile) {
+                notifs.push({
+                  type: 'comment_reply',
+                  fromUser: {
+                    id: rProfile.id || reply.user_id,
+                    display_name: rProfile.display_name || 'Người dùng',
+                    avatar_url: rProfile.avatar_url,
+                  },
+                  created_at: reply.created_at,
+                  commentContent: reply.content,
+                  postImageUrl: post?.image_url || null,
+                });
+              }
+            });
+          }
+        }
+      } catch (e) {
+        console.error('Error fetching comment reply notifications:', e);
       }
 
       // Calculate new total
@@ -535,6 +600,38 @@ export const Navbar = () => {
                             <p className="text-xs text-muted-foreground">Nhấn để xem</p>
                           </div>
                         </Link>
+                      )}
+                      {notif.type === 'comment_reply' && (
+                        <div className="flex items-start gap-3">
+                          <div className="relative">
+                            <Avatar className="h-10 w-10">
+                              <AvatarImage src={notif.fromUser?.avatar_url || ''} />
+                              <AvatarFallback className="bg-primary text-primary-foreground">
+                                {notif.fromUser?.display_name?.charAt(0).toUpperCase() || 'U'}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-primary rounded-full flex items-center justify-center">
+                              <Reply className="w-3 h-3 text-primary-foreground" />
+                            </div>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm">
+                              <span className="font-semibold">{notif.fromUser?.display_name}</span>
+                              {' '}đã phản hồi bình luận của bạn
+                            </p>
+                            {notif.commentContent && (
+                              <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{notif.commentContent}</p>
+                            )}
+                            {notif.postImageUrl && (
+                              <img src={notif.postImageUrl} alt="" className="w-10 h-10 rounded-md object-cover mt-1" />
+                            )}
+                            {notif.created_at && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {formatDistanceToNow(new Date(notif.created_at), { addSuffix: true, locale: vi })}
+                              </p>
+                            )}
+                          </div>
+                        </div>
                       )}
                     </div>
                   ))
