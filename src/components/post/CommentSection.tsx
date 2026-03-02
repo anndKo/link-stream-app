@@ -1,27 +1,23 @@
 import { useState, useEffect, useCallback, memo, useMemo, useRef } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
-import { Send, Trash2, ThumbsUp, Heart, Laugh, Frown, Angry, SmilePlus, Reply, CornerDownRight, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { Send, Trash2, Reply, CornerDownRight, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { Link, useNavigate } from 'react-router-dom';
 
 const REACTION_EMOJIS = [
-  { emoji: '👍', label: 'Like' },
-  { emoji: '❤️', label: 'Love' },
-  { emoji: '😂', label: 'Haha' },
-  { emoji: '😮', label: 'Wow' },
-  { emoji: '😢', label: 'Sad' },
-  { emoji: '😡', label: 'Angry' },
+  { emoji: '👍', label: 'Like', bg: 'bg-blue-100 dark:bg-blue-900/40' },
+  { emoji: '❤️', label: 'Love', bg: 'bg-pink-100 dark:bg-pink-900/40' },
+  { emoji: '😂', label: 'Haha', bg: 'bg-yellow-100 dark:bg-yellow-900/40' },
+  { emoji: '😮', label: 'Wow', bg: 'bg-orange-100 dark:bg-orange-900/40' },
+  { emoji: '😢', label: 'Sad', bg: 'bg-indigo-100 dark:bg-indigo-900/40' },
+  { emoji: '😡', label: 'Angry', bg: 'bg-red-100 dark:bg-red-900/40' },
 ];
 
 interface CommentReaction {
@@ -74,6 +70,8 @@ const ReactionButton = memo(({ userReaction, commentId, onReaction }: {
     if (hideTimeout.current) clearTimeout(hideTimeout.current);
   }, [commentId, onReaction]);
 
+  const activeEmoji = userReaction ? REACTION_EMOJIS.find(e => e.emoji === userReaction.emoji) : null;
+
   return (
     <div className="relative" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
       <button
@@ -87,12 +85,12 @@ const ReactionButton = memo(({ userReaction, commentId, onReaction }: {
       </button>
       {showPicker && (
         <div className="absolute bottom-full left-0 mb-1 flex items-center gap-0.5 bg-popover border border-border rounded-full px-1.5 py-1 shadow-lg z-10 animate-fade-in">
-          {REACTION_EMOJIS.map(({ emoji, label }) => (
+          {REACTION_EMOJIS.map(({ emoji, label, bg }) => (
             <button
               key={emoji}
               className={cn(
-                'text-lg hover:scale-150 transition-all duration-200 p-0.5 rounded-full',
-                userReaction?.emoji === emoji && 'bg-primary/20'
+                'text-lg hover:scale-150 transition-all duration-200 p-1 rounded-full',
+                userReaction?.emoji === emoji && `${bg} scale-125`
               )}
               onClick={(e) => { e.stopPropagation(); handleSelect(emoji); }}
               title={label}
@@ -107,6 +105,39 @@ const ReactionButton = memo(({ userReaction, commentId, onReaction }: {
 });
 ReactionButton.displayName = 'ReactionButton';
 
+// Render @mention as clickable link
+const CommentContent = memo(({ content, comments }: { content: string; comments: Comment[] }) => {
+  const mentionRegex = /(@\S+)/g;
+  const parts = content.split(mentionRegex);
+
+  return (
+    <p className="text-sm whitespace-pre-wrap break-words">
+      {parts.map((part, i) => {
+        if (part.startsWith('@')) {
+          const name = part.slice(1);
+          const mentioned = comments.find(
+            c => c.profile?.display_name === name || c.profile?.username === name
+          );
+          if (mentioned) {
+            return (
+              <Link
+                key={i}
+                to={`/profile/${mentioned.user_id}`}
+                className="text-primary font-medium hover:underline"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {part}
+              </Link>
+            );
+          }
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </p>
+  );
+});
+CommentContent.displayName = 'CommentContent';
+
 export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => {
   const { user, isAdmin } = useAuth();
   const [comments, setComments] = useState<Comment[]>([]);
@@ -115,7 +146,6 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [replyingTo, setReplyingTo] = useState<{ id: string; username: string; parentId: string | null } | null>(null);
   const [expandedReplies, setExpandedReplies] = useState<Set<string>>(new Set());
-  const [showReactionUsers, setShowReactionUsers] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const fetchComments = useCallback(async () => {
@@ -179,20 +209,15 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
     return () => { supabase.removeChannel(channel); };
   }, [postId, isOpen, fetchComments]);
 
-  // Organize comments into tree - level 2 max visual depth
   const organizedComments = useMemo(() => {
     const topLevel = comments.filter(c => !c.parent_id);
     const replies = comments.filter(c => c.parent_id);
-    
-    // Build reply map - all replies go under their root parent
-    const replyMap = new Map<string, Comment[]>();
     const topLevelIds = new Set(topLevel.map(c => c.id));
-    
+    const replyMap = new Map<string, Comment[]>();
+
     replies.forEach(r => {
-      // Find root parent (level 1)
       let rootId = r.parent_id!;
       if (!topLevelIds.has(rootId)) {
-        // This is a reply to a reply - find its root parent
         const parentComment = comments.find(c => c.id === rootId);
         if (parentComment?.parent_id && topLevelIds.has(parentComment.parent_id)) {
           rootId = parentComment.parent_id;
@@ -202,7 +227,6 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
       replyMap.get(rootId)!.push(r);
     });
 
-    // Sort replies oldest first
     replyMap.forEach(arr => arr.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()));
 
     return topLevel.map(c => ({
@@ -216,55 +240,102 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
     if (!user || !newComment.trim() || isSubmitting) return;
     setIsSubmitting(true);
     const content = newComment.trim();
+    
+    // Optimistic: add immediately
+    const tempId = `temp-${Date.now()}`;
+    const optimisticComment: Comment = {
+      id: tempId,
+      content,
+      created_at: new Date().toISOString(),
+      user_id: user.id,
+      parent_id: replyingTo ? (replyingTo.parentId || replyingTo.id) : null,
+      profile: undefined,
+      reactions: [],
+    };
+
+    // Fetch own profile for display
+    const cachedProfile = comments.find(c => c.user_id === user.id)?.profile;
+    if (cachedProfile) {
+      optimisticComment.profile = cachedProfile;
+    }
+
+    setComments(prev => [optimisticComment, ...prev]);
+    setNewComment('');
+    const savedReplyingTo = replyingTo;
+    setReplyingTo(null);
+
+    // Expand replies if replying
+    if (savedReplyingTo) {
+      const rootId = savedReplyingTo.parentId || savedReplyingTo.id;
+      setExpandedReplies(prev => new Set(prev).add(rootId));
+    }
+
     try {
       const insertData: any = { post_id: postId, user_id: user.id, content };
-      if (replyingTo) {
-        insertData.parent_id = replyingTo.parentId || replyingTo.id;
+      if (savedReplyingTo) {
+        insertData.parent_id = savedReplyingTo.parentId || savedReplyingTo.id;
       }
       const { data, error } = await supabase.from('comments').insert(insertData).select('*').single();
       if (error) throw error;
-      // Optimistic update - add comment immediately
+
+      // Replace temp with real
       if (data) {
-        const newCommentObj: Comment = {
-          ...data,
-          parent_id: data.parent_id || null,
-          profile: undefined, // will be filled on next fetch
-          reactions: [],
-        };
-        // Fetch profile for the new comment
-        const { data: profileData } = await supabase
-          .from('public_profiles')
-          .select('id, display_name, avatar_url, username')
-          .eq('id', user.id)
-          .single();
-        if (profileData) {
-          newCommentObj.profile = profileData as any;
+        if (!cachedProfile) {
+          const { data: profileData } = await supabase
+            .from('public_profiles')
+            .select('id, display_name, avatar_url, username')
+            .eq('id', user.id)
+            .single();
+          if (profileData) {
+            optimisticComment.profile = profileData as any;
+          }
         }
-        setComments(prev => [newCommentObj, ...prev]);
+        setComments(prev => prev.map(c => c.id === tempId ? { ...c, ...data, parent_id: data.parent_id || null, profile: optimisticComment.profile, reactions: [] } : c));
       }
-      setNewComment('');
-      setReplyingTo(null);
       toast({ title: 'Đã thêm bình luận' });
     } catch (error) {
-      console.error('Error adding comment:', error);
+      // Rollback
+      setComments(prev => prev.filter(c => c.id !== tempId));
       toast({ title: 'Lỗi', description: 'Không thể thêm bình luận', variant: 'destructive' });
     } finally {
       setIsSubmitting(false);
     }
-  }, [user, newComment, postId, isSubmitting, replyingTo]);
+  }, [user, newComment, postId, isSubmitting, replyingTo, comments]);
 
   const handleDelete = useCallback(async (commentId: string) => {
+    // Optimistic delete
+    const deleted = comments.find(c => c.id === commentId);
+    setComments(prev => prev.filter(c => c.id !== commentId));
     try {
       const { error } = await supabase.from('comments').delete().eq('id', commentId);
       if (error) throw error;
       toast({ title: 'Đã xóa bình luận' });
     } catch (error) {
+      if (deleted) setComments(prev => [...prev, deleted]);
       toast({ title: 'Lỗi', description: 'Không thể xóa bình luận', variant: 'destructive' });
     }
-  }, []);
+  }, [comments]);
 
   const handleReaction = useCallback(async (commentId: string, emoji: string) => {
     if (!user) return;
+
+    // Optimistic update
+    setComments(prev => prev.map(c => {
+      if (c.id !== commentId) return c;
+      const existing = c.reactions?.find(r => r.user_id === user.id);
+      let newReactions = [...(c.reactions || [])];
+      if (existing) {
+        if (existing.emoji === emoji) {
+          newReactions = newReactions.filter(r => r.id !== existing.id);
+        } else {
+          newReactions = newReactions.map(r => r.id === existing.id ? { ...r, emoji } : r);
+        }
+      } else {
+        newReactions.push({ id: `temp-${Date.now()}`, comment_id: commentId, user_id: user.id, emoji });
+      }
+      return { ...c, reactions: newReactions };
+    }));
+
     try {
       const { data: existing } = await supabase
         .from('comment_reactions')
@@ -284,15 +355,16 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
       }
     } catch (error) {
       console.error('Error toggling reaction:', error);
+      fetchComments(); // Rollback by refetching
     }
-  }, [user]);
+  }, [user, fetchComments]);
 
   const handleReply = useCallback((comment: Comment, isReply = false) => {
     const username = comment.profile?.display_name || comment.profile?.username || 'Người dùng';
     setReplyingTo({
       id: comment.id,
       username,
-      parentId: isReply ? comment.parent_id : null, // if replying to a reply, use parent's parent
+      parentId: isReply ? comment.parent_id : null,
     });
     setNewComment(`@${username} `);
     inputRef.current?.focus();
@@ -300,7 +372,6 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
 
   const getTopReply = useCallback((replies: Comment[]) => {
     if (replies.length === 0) return null;
-    // Return the reply with most reactions
     return replies.reduce((best, r) => {
       const bestCount = best.reactions?.length || 0;
       const rCount = r.reactions?.length || 0;
@@ -317,19 +388,8 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
     const userReaction = comment.reactions?.find(r => r.user_id === user?.id);
     const totalReactions = comment.reactions?.length || 0;
 
-    // Get top emoji (most used)
-    let topEmoji = '👍';
-    let maxCount = 0;
-    reactionGroups.forEach((users, emoji) => {
-      if (users.length > maxCount) {
-        maxCount = users.length;
-        topEmoji = emoji;
-      }
-    });
-
     return (
       <div className="flex items-center gap-2 flex-wrap">
-        {/* Like/React button with hover */}
         {user && (
           <ReactionButton
             userReaction={userReaction}
@@ -337,61 +397,58 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
             onReaction={handleReaction}
           />
         )}
-        {/* Show top reaction with count */}
-        {totalReactions > 0 && (
-          <button
-            className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            onClick={() => setShowReactionUsers(showReactionUsers === comment.id ? null : comment.id)}
-          >
-            {[...reactionGroups.keys()].slice(0, 3).map(emoji => (
-              <span key={emoji} className="text-sm">{emoji}</span>
-            ))}
-            <span className="ml-0.5">{totalReactions}</span>
-          </button>
-        )}
-        {/* Reaction users list */}
-        {showReactionUsers === comment.id && totalReactions > 0 && (
-          <div className="absolute z-20 mt-1 bg-popover border border-border rounded-xl p-2 shadow-lg min-w-[150px] animate-fade-in">
-            {(comment.reactions || []).map(r => {
-              const rProfile = comments.find(c => c.user_id === r.user_id)?.profile;
-              return (
-                <div key={r.id} className="flex items-center gap-2 py-1 text-xs">
-                  <span>{r.emoji}</span>
-                  <span className="text-foreground">{rProfile?.display_name || rProfile?.username || 'Người dùng'}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
       </div>
     );
-  }, [user, handleReaction, showReactionUsers, comments]);
+  }, [user, handleReaction]);
+
+  const renderReactionSummary = useCallback((comment: Comment) => {
+    const totalReactions = comment.reactions?.length || 0;
+    if (totalReactions === 0) return null;
+
+    const reactionGroups = new Map<string, number>();
+    (comment.reactions || []).forEach(r => {
+      reactionGroups.set(r.emoji, (reactionGroups.get(r.emoji) || 0) + 1);
+    });
+
+    return (
+      <div className="flex items-center gap-0.5 mt-1 px-3">
+        {[...reactionGroups.entries()].slice(0, 3).map(([emoji, count]) => (
+          <span key={emoji} className="text-xs">{emoji}</span>
+        ))}
+        <span className="text-xs text-muted-foreground ml-0.5">{totalReactions}</span>
+      </div>
+    );
+  }, []);
 
   const renderComment = useCallback((comment: Comment, isReply = false) => {
+    const displayName = comment.profile?.display_name || comment.profile?.username || 'Người dùng';
     return (
       <div key={comment.id} className={cn('flex gap-2 group relative', isReply && 'ml-6 sm:ml-10')}>
         {isReply && <CornerDownRight className="w-3 h-3 text-muted-foreground flex-shrink-0 mt-3" />}
-        <Avatar className={isReply ? 'h-7 w-7 flex-shrink-0' : 'h-8 w-8 flex-shrink-0'}>
-          <AvatarImage src={comment.profile?.avatar_url || ''} />
-          <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-            {(comment.profile?.display_name || comment.profile?.username)?.charAt(0).toUpperCase() || 'U'}
-          </AvatarFallback>
-        </Avatar>
+        <Link to={`/profile/${comment.user_id}`} className="flex-shrink-0">
+          <Avatar className={isReply ? 'h-7 w-7' : 'h-8 w-8'}>
+            <AvatarImage src={comment.profile?.avatar_url || ''} />
+            <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+              {displayName.charAt(0).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+        </Link>
         <div className="flex-1 min-w-0">
           <div className="bg-secondary/50 rounded-2xl px-3 py-2">
             <div className="flex items-center gap-2">
-              <p className="font-semibold text-sm">
-                {comment.profile?.display_name || comment.profile?.username || 'Người dùng'}
-              </p>
+              <Link to={`/profile/${comment.user_id}`} className="font-semibold text-sm hover:underline">
+                {displayName}
+              </Link>
               <span className="text-[10px] text-muted-foreground">
                 {formatDistanceToNow(new Date(comment.created_at), { addSuffix: true, locale: vi })}
               </span>
             </div>
-            <p className="text-sm whitespace-pre-wrap break-words">{comment.content}</p>
+            <CommentContent content={comment.content} comments={comments} />
           </div>
+          {/* Reaction summary - below content, above action buttons */}
+          {renderReactionSummary(comment)}
           <div className="flex items-center gap-3 mt-0.5 px-2">
             {renderReactions(comment)}
-            {/* Reply button */}
             {user && (
               <button
                 className="text-xs text-muted-foreground hover:text-foreground font-medium"
@@ -413,13 +470,12 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
         )}
       </div>
     );
-  }, [user, isAdmin, renderReactions, handleReply, handleDelete]);
+  }, [user, isAdmin, renderReactions, renderReactionSummary, handleReply, handleDelete, comments]);
 
   if (!isOpen) return null;
 
   return (
     <div className="border-t border-border/50 pt-4 mt-4 space-y-3 animate-fade-in">
-      {/* Comments list */}
       <div className="space-y-3 max-h-96 overflow-y-auto">
         {isLoading ? (
           <div className="text-center text-muted-foreground py-4 text-sm">Đang tải bình luận...</div>
@@ -434,7 +490,6 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
             return (
               <div key={comment.id} className="space-y-1">
                 {renderComment(comment)}
-                {/* Show top reply or all replies */}
                 {replyCount > 0 && (
                   <div className="space-y-1">
                     {isExpanded ? (
@@ -470,7 +525,6 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
         )}
       </div>
 
-      {/* Comment input - sticky on mobile */}
       {user && (
         <div className="sticky bottom-0 bg-background/95 backdrop-blur-sm pt-2 pb-1 -mx-1 px-1">
           {replyingTo && (
