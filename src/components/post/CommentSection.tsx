@@ -9,7 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
 const REACTION_EMOJIS = [
   { emoji: '👍', label: 'Like', bg: 'bg-blue-100 dark:bg-blue-900/40' },
@@ -105,8 +105,12 @@ const ReactionButton = memo(({ userReaction, commentId, onReaction }: {
 });
 ReactionButton.displayName = 'ReactionButton';
 
-// Render @mention as clickable link
-const CommentContent = memo(({ content, comments }: { content: string; comments: Comment[] }) => {
+// Render @mention - click scrolls to that user's comment
+const CommentContent = memo(({ content, comments, onMentionClick }: { 
+  content: string; 
+  comments: Comment[];
+  onMentionClick: (userId: string) => void;
+}) => {
   const mentionRegex = /(@\S+)/g;
   const parts = content.split(mentionRegex);
 
@@ -120,14 +124,16 @@ const CommentContent = memo(({ content, comments }: { content: string; comments:
           );
           if (mentioned) {
             return (
-              <Link
+              <button
                 key={i}
-                to={`/profile/${mentioned.user_id}`}
                 className="text-primary font-medium hover:underline"
-                onClick={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMentionClick(mentioned.user_id);
+                }}
               >
                 {part}
-              </Link>
+              </button>
             );
           }
         }
@@ -146,7 +152,45 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [replyingTo, setReplyingTo] = useState<{ id: string; username: string; parentId: string | null } | null>(null);
   const [expandedReplies, setExpandedReplies] = useState<Set<string>>(new Set());
+  const [highlightedCommentId, setHighlightedCommentId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const commentsContainerRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to a user's most recent comment
+  const scrollToUserComment = useCallback((userId: string) => {
+    // Find newest reply first, then newest top-level
+    const userComments = comments
+      .filter(c => c.user_id === userId)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    
+    // Prefer replies, then top-level
+    const replies = userComments.filter(c => c.parent_id);
+    const target = replies[0] || userComments[0];
+    if (!target) return;
+
+    // Expand parent if it's a reply
+    if (target.parent_id) {
+      const topLevelIds = new Set(comments.filter(c => !c.parent_id).map(c => c.id));
+      let rootId = target.parent_id;
+      if (!topLevelIds.has(rootId)) {
+        const parent = comments.find(c => c.id === rootId);
+        if (parent?.parent_id && topLevelIds.has(parent.parent_id)) {
+          rootId = parent.parent_id;
+        }
+      }
+      setExpandedReplies(prev => new Set(prev).add(rootId));
+    }
+
+    // Wait for DOM update then scroll
+    setTimeout(() => {
+      const el = document.getElementById(`comment-${target.id}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setHighlightedCommentId(target.id);
+        setTimeout(() => setHighlightedCommentId(null), 2000);
+      }
+    }, 100);
+  }, [comments]);
 
   const fetchComments = useCallback(async () => {
     if (!isOpen) return;
@@ -241,7 +285,6 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
     setIsSubmitting(true);
     const content = newComment.trim();
     
-    // Optimistic: add immediately
     const tempId = `temp-${Date.now()}`;
     const optimisticComment: Comment = {
       id: tempId,
@@ -253,7 +296,6 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
       reactions: [],
     };
 
-    // Fetch own profile for display
     const cachedProfile = comments.find(c => c.user_id === user.id)?.profile;
     if (cachedProfile) {
       optimisticComment.profile = cachedProfile;
@@ -264,7 +306,6 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
     const savedReplyingTo = replyingTo;
     setReplyingTo(null);
 
-    // Expand replies if replying
     if (savedReplyingTo) {
       const rootId = savedReplyingTo.parentId || savedReplyingTo.id;
       setExpandedReplies(prev => new Set(prev).add(rootId));
@@ -278,7 +319,6 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
       const { data, error } = await supabase.from('comments').insert(insertData).select('*').single();
       if (error) throw error;
 
-      // Replace temp with real
       if (data) {
         if (!cachedProfile) {
           const { data: profileData } = await supabase
@@ -294,7 +334,6 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
       }
       toast({ title: 'Đã thêm bình luận' });
     } catch (error) {
-      // Rollback
       setComments(prev => prev.filter(c => c.id !== tempId));
       toast({ title: 'Lỗi', description: 'Không thể thêm bình luận', variant: 'destructive' });
     } finally {
@@ -303,7 +342,6 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
   }, [user, newComment, postId, isSubmitting, replyingTo, comments]);
 
   const handleDelete = useCallback(async (commentId: string) => {
-    // Optimistic delete
     const deleted = comments.find(c => c.id === commentId);
     setComments(prev => prev.filter(c => c.id !== commentId));
     try {
@@ -319,7 +357,6 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
   const handleReaction = useCallback(async (commentId: string, emoji: string) => {
     if (!user) return;
 
-    // Optimistic update
     setComments(prev => prev.map(c => {
       if (c.id !== commentId) return c;
       const existing = c.reactions?.find(r => r.user_id === user.id);
@@ -355,7 +392,7 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
       }
     } catch (error) {
       console.error('Error toggling reaction:', error);
-      fetchComments(); // Rollback by refetching
+      fetchComments();
     }
   }, [user, fetchComments]);
 
@@ -379,28 +416,6 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
     }, replies[0]);
   }, []);
 
-  const renderReactions = useCallback((comment: Comment) => {
-    const reactionGroups = new Map<string, string[]>();
-    (comment.reactions || []).forEach(r => {
-      if (!reactionGroups.has(r.emoji)) reactionGroups.set(r.emoji, []);
-      reactionGroups.get(r.emoji)!.push(r.user_id);
-    });
-    const userReaction = comment.reactions?.find(r => r.user_id === user?.id);
-    const totalReactions = comment.reactions?.length || 0;
-
-    return (
-      <div className="flex items-center gap-2 flex-wrap">
-        {user && (
-          <ReactionButton
-            userReaction={userReaction}
-            commentId={comment.id}
-            onReaction={handleReaction}
-          />
-        )}
-      </div>
-    );
-  }, [user, handleReaction]);
-
   const renderReactionSummary = useCallback((comment: Comment) => {
     const totalReactions = comment.reactions?.length || 0;
     if (totalReactions === 0) return null;
@@ -411,8 +426,8 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
     });
 
     return (
-      <div className="flex items-center gap-0.5 mt-1 px-3">
-        {[...reactionGroups.entries()].slice(0, 3).map(([emoji, count]) => (
+      <div className="flex items-center gap-0.5 ml-auto flex-shrink-0">
+        {[...reactionGroups.entries()].slice(0, 3).map(([emoji]) => (
           <span key={emoji} className="text-xs">{emoji}</span>
         ))}
         <span className="text-xs text-muted-foreground ml-0.5">{totalReactions}</span>
@@ -422,8 +437,19 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
 
   const renderComment = useCallback((comment: Comment, isReply = false) => {
     const displayName = comment.profile?.display_name || comment.profile?.username || 'Người dùng';
+    const isHighlighted = highlightedCommentId === comment.id;
+    const userReaction = comment.reactions?.find(r => r.user_id === user?.id);
+
     return (
-      <div key={comment.id} className={cn('flex gap-2 group relative', isReply && 'ml-6 sm:ml-10')}>
+      <div
+        key={comment.id}
+        id={`comment-${comment.id}`}
+        className={cn(
+          'flex gap-2 group relative transition-colors duration-500',
+          isReply && 'ml-6 sm:ml-10',
+          isHighlighted && 'bg-primary/10 rounded-xl'
+        )}
+      >
         {isReply && <CornerDownRight className="w-3 h-3 text-muted-foreground flex-shrink-0 mt-3" />}
         <Link to={`/profile/${comment.user_id}`} className="flex-shrink-0">
           <Avatar className={isReply ? 'h-7 w-7' : 'h-8 w-8'}>
@@ -443,20 +469,28 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
                 {formatDistanceToNow(new Date(comment.created_at), { addSuffix: true, locale: vi })}
               </span>
             </div>
-            <CommentContent content={comment.content} comments={comments} />
+            <CommentContent content={comment.content} comments={comments} onMentionClick={scrollToUserComment} />
           </div>
-          {/* Reaction summary - below content, above action buttons */}
-          {renderReactionSummary(comment)}
-          <div className="flex items-center gap-3 mt-0.5 px-2">
-            {renderReactions(comment)}
-            {user && (
-              <button
-                className="text-xs text-muted-foreground hover:text-foreground font-medium"
-                onClick={() => handleReply(comment, isReply)}
-              >
-                Trả lời
-              </button>
-            )}
+          {/* Single row: Like + Reply left, Reaction summary right */}
+          <div className="flex items-center justify-between mt-0.5 px-2">
+            <div className="flex items-center gap-3">
+              {user && (
+                <ReactionButton
+                  userReaction={userReaction}
+                  commentId={comment.id}
+                  onReaction={handleReaction}
+                />
+              )}
+              {user && (
+                <button
+                  className="text-xs text-muted-foreground hover:text-foreground font-medium"
+                  onClick={() => handleReply(comment, isReply)}
+                >
+                  Trả lời
+                </button>
+              )}
+            </div>
+            {renderReactionSummary(comment)}
           </div>
         </div>
         {(user?.id === comment.user_id || isAdmin) && (
@@ -470,13 +504,13 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
         )}
       </div>
     );
-  }, [user, isAdmin, renderReactions, renderReactionSummary, handleReply, handleDelete, comments]);
+  }, [user, isAdmin, renderReactionSummary, handleReply, handleDelete, handleReaction, comments, highlightedCommentId, scrollToUserComment]);
 
   if (!isOpen) return null;
 
   return (
     <div className="border-t border-border/50 pt-4 mt-4 space-y-3 animate-fade-in">
-      <div className="space-y-3 max-h-96 overflow-y-auto">
+      <div ref={commentsContainerRef} className="space-y-3 max-h-96 overflow-y-auto">
         {isLoading ? (
           <div className="text-center text-muted-foreground py-4 text-sm">Đang tải bình luận...</div>
         ) : organizedComments.length === 0 ? (
