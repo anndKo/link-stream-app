@@ -182,8 +182,7 @@ export const CreatePost = memo(({ onPostCreated }: CreatePostProps) => {
             </div>
           }
 
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex gap-1 sm:gap-2 items-center flex-wrap flex-1 min-w-0">
+          <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -194,23 +193,22 @@ export const CreatePost = memo(({ onPostCreated }: CreatePostProps) => {
               <Button
                 variant="ghost"
                 size="sm"
-                className="rounded-xl gap-2 text-primary hover:text-primary"
+                className="rounded-xl gap-1 sm:gap-2 text-primary hover:text-primary h-8 px-2 sm:px-3"
                 onClick={() => fileInputRef.current?.click()}>
-
-                <Image className="w-5 h-5" />
-                <span className="hidden sm:inline">Ảnh</span>
+                <Image className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="text-xs sm:text-sm">Ảnh</span>
               </Button>
               
               <EmojiPickerPopover onEmojiSelect={handleEmojiSelect} />
 
               <Select value={visibility} onValueChange={(v: 'public' | 'private' | 'friends') => setVisibility(v)}>
-                <SelectTrigger className="w-auto gap-2 rounded-xl border-0 bg-secondary/50 h-9 px-3">
+                <SelectTrigger className="w-auto gap-1 sm:gap-2 rounded-xl border-0 bg-secondary/50 h-8 px-2 sm:px-3 text-xs sm:text-sm">
                   {visibility === 'public' ? (
-                    <Globe className="w-4 h-4 text-primary" />
+                    <Globe className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-primary" />
                   ) : visibility === 'friends' ? (
-                    <Users className="w-4 h-4 text-accent" />
+                    <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-accent" />
                   ) : (
-                    <Lock className="w-4 h-4 text-warning" />
+                    <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-warning" />
                   )}
                   <SelectValue />
                 </SelectTrigger>
@@ -235,14 +233,12 @@ export const CreatePost = memo(({ onPostCreated }: CreatePostProps) => {
                   </SelectItem>
                 </SelectContent>
               </Select>
-            </div>
 
             <Button
               onClick={handleSubmit}
               disabled={isSubmitting || !content.trim() && !imageFile}
-              className="rounded-xl gap-2 gradient-primary shadow-glow hover:shadow-lg transition-all">
-
-              <Send className="w-4 h-4" />
+              className="rounded-xl gap-1 sm:gap-2 gradient-primary shadow-glow hover:shadow-lg transition-all h-8 px-2 sm:px-3 text-xs sm:text-sm ml-auto">
+              <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               {isSubmitting ? 'Đang đăng...' : 'Đăng'}
             </Button>
           </div>

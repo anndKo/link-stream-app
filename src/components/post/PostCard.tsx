@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, memo, useMemo } from 'react';
+import { useState, useEffect, useCallback, memo, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
-import { Heart, MessageCircle, Share2, MoreHorizontal, Trash2, Globe, Lock, Flag, X, Pencil, Eye, EyeOff, Users } from 'lucide-react';
+import { Heart, MessageCircle, Share2, MoreHorizontal, Trash2, Globe, Lock, Flag, X, Pencil, Eye, EyeOff, Users, Image } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -100,6 +100,11 @@ export const PostCard = memo(({ post, onDelete }: PostCardProps) => {
   const [editVisibility, setEditVisibility] = useState<string>('public');
   const [currentVisibility, setCurrentVisibility] = useState<string>((post as any).visibility || 'public');
   const [currentContent, setCurrentContent] = useState(post.content || '');
+  const [currentImageUrl, setCurrentImageUrl] = useState(post.image_url || null);
+  const [editImageFile, setEditImageFile] = useState<File | null>(null);
+  const [editImagePreview, setEditImagePreview] = useState<string | null>(post.image_url || null);
+  const [editImageRemoved, setEditImageRemoved] = useState(false);
+  const editImageInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (fullscreenOpen) {
@@ -190,12 +195,33 @@ export const PostCard = memo(({ post, onDelete }: PostCardProps) => {
   }, [canDelete, post.id, onDelete]);
 
   const handleEditPost = useCallback(async () => {
-    if (!isOwner || !editContent.trim()) return;
+    if (!isOwner || (!editContent.trim() && !editImagePreview)) return;
     setIsEditing(true);
     try {
-      const { error } = await supabase.from('posts').update({ content: editContent.trim(), updated_at: new Date().toISOString() }).eq('id', post.id);
+      let newImageUrl = currentImageUrl;
+
+      // Upload new image
+      if (editImageFile) {
+        const fileExt = editImageFile.name.split('.').pop();
+        const fileName = `${user!.id}/${Date.now()}.${fileExt}`;
+        const { error: uploadError } = await supabase.storage.from('posts').upload(fileName, editImageFile);
+        if (uploadError) throw uploadError;
+        const { data: { publicUrl } } = supabase.storage.from('posts').getPublicUrl(fileName);
+        newImageUrl = publicUrl;
+      } else if (editImageRemoved) {
+        newImageUrl = null;
+      }
+
+      const { error } = await supabase.from('posts').update({ 
+        content: editContent.trim() || null, 
+        image_url: newImageUrl,
+        updated_at: new Date().toISOString() 
+      }).eq('id', post.id);
       if (error) throw error;
       setCurrentContent(editContent.trim());
+      setCurrentImageUrl(newImageUrl);
+      setEditImageFile(null);
+      setEditImageRemoved(false);
       toast({ title: 'Đã cập nhật bài viết' });
       setShowEditDialog(false);
       onDelete?.(); // refresh
@@ -204,7 +230,7 @@ export const PostCard = memo(({ post, onDelete }: PostCardProps) => {
     } finally {
       setIsEditing(false);
     }
-  }, [isOwner, editContent, post.id, onDelete]);
+  }, [isOwner, editContent, editImageFile, editImageRemoved, editImagePreview, currentImageUrl, post.id, user, onDelete]);
 
   const handleEditVisibility = useCallback(async () => {
     if (!isOwner) return;
@@ -329,6 +355,9 @@ export const PostCard = memo(({ post, onDelete }: PostCardProps) => {
                   <DropdownMenuItem
                     onClick={() => {
                       setEditContent(currentContent);
+                      setEditImagePreview(currentImageUrl);
+                      setEditImageFile(null);
+                      setEditImageRemoved(false);
                       setShowEditDialog(true);
                     }}
                     className="cursor-pointer"
@@ -365,9 +394,9 @@ export const PostCard = memo(({ post, onDelete }: PostCardProps) => {
         {currentContent && <PostContent content={currentContent} />}
 
         {/* Edited label inline with time */}
-        {post.image_url && (
+        {currentImageUrl && (
           <div className="mb-4 rounded-xl overflow-hidden cursor-pointer" onClick={() => setFullscreenOpen(true)}>
-            <img src={post.image_url} alt="Post image" className="w-full max-h-[500px] object-contain hover:scale-[1.02] transition-transform duration-500" loading="lazy" />
+            <img src={currentImageUrl} alt="Post image" className="w-full max-h-[500px] object-contain hover:scale-[1.02] transition-transform duration-500" loading="lazy" />
           </div>
         )}
 
@@ -397,7 +426,7 @@ export const PostCard = memo(({ post, onDelete }: PostCardProps) => {
               </div>
             </div>
             {currentContent && <p className="text-foreground whitespace-pre-wrap leading-relaxed text-lg">{currentContent}</p>}
-            {post.image_url && <img src={post.image_url} alt="Post image" className="w-full h-auto rounded-xl" />}
+            {currentImageUrl && <img src={currentImageUrl} alt="Post image" className="w-full h-auto rounded-xl" />}
             {actionsBar}
             <CommentSection postId={post.id} isOpen={true} />
           </div>
@@ -442,10 +471,58 @@ export const PostCard = memo(({ post, onDelete }: PostCardProps) => {
             <p className={cn('text-xs text-right', countWords(editContent) > POST_MAX_WORDS ? 'text-destructive' : 'text-muted-foreground')}>
               {countWords(editContent)}/{POST_MAX_WORDS}
             </p>
+            {/* Image edit section */}
+            {editImagePreview ? (
+              <div className="relative inline-block">
+                <img src={editImagePreview} alt="Preview" className="max-h-48 rounded-xl object-cover" />
+                <Button
+                  variant="destructive"
+                  size="icon"
+                  className="absolute top-2 right-2 h-7 w-7 rounded-full"
+                  onClick={() => {
+                    setEditImageFile(null);
+                    setEditImagePreview(null);
+                    setEditImageRemoved(true);
+                  }}
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-xl gap-2"
+                onClick={() => editImageInputRef.current?.click()}
+              >
+                <Image className="w-4 h-4" />
+                Thêm ảnh
+              </Button>
+            )}
+            <input
+              ref={editImageInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  if (file.size > 5 * 1024 * 1024) {
+                    toast({ title: 'Lỗi', description: 'Ảnh không được vượt quá 5MB', variant: 'destructive' });
+                    return;
+                  }
+                  setEditImageFile(file);
+                  const reader = new FileReader();
+                  reader.onload = () => setEditImagePreview(reader.result as string);
+                  reader.readAsDataURL(file);
+                  setEditImageRemoved(false);
+                }
+              }}
+            />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowEditDialog(false)} className="rounded-xl">Hủy</Button>
-            <Button onClick={handleEditPost} disabled={isEditing || !editContent.trim()} className="rounded-xl gradient-primary">
+            <Button onClick={handleEditPost} disabled={isEditing || (!editContent.trim() && !editImagePreview)} className="rounded-xl gradient-primary">
               {isEditing ? 'Đang lưu...' : 'Lưu thay đổi'}
             </Button>
           </DialogFooter>
