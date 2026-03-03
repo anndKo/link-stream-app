@@ -215,6 +215,7 @@ const Trading = () => {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const postImageInputRef = useRef<HTMLInputElement>(null);
   const messageImageInputRef = useRef<HTMLInputElement>(null);
+  const [showMyPostsModal, setShowMyPostsModal] = useState(false);
 
   // Fetch admin payment settings
   useEffect(() => {
@@ -1882,10 +1883,18 @@ const Trading = () => {
           {/* Posts Section */}
           <div className="flex-1 space-y-4">
             <Card className="glass">
-              <CardHeader className="pb-3">
-                <h2 className="font-semibold">Đăng bài giao dịch</h2>
-              </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="pt-4 space-y-4 px-3 sm:px-6">
+                <div className="flex items-start gap-2 sm:gap-3">
+                  {/* Avatar - click to show own posts */}
+                  <button onClick={() => setShowMyPostsModal(true)} className="flex-shrink-0">
+                    <Avatar className="h-10 w-10 ring-2 ring-primary/20 hover:ring-primary/40 transition-all">
+                      <AvatarImage src={profile?.avatar_url || ''} />
+                      <AvatarFallback className="bg-primary text-primary-foreground">
+                        {profile?.display_name?.charAt(0).toUpperCase() || 'U'}
+                      </AvatarFallback>
+                    </Avatar>
+                  </button>
+                  <div className="flex-1 space-y-4">
                 {/* Category Selection */}
                 <Select value={postCategory} onValueChange={setPostCategory}>
                   <SelectTrigger className="rounded-xl">
@@ -1963,6 +1972,8 @@ const Trading = () => {
                   >
                     {isPostLoading ? 'Đang đăng...' : 'Đăng bài'}
                   </Button>
+                </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -3305,6 +3316,32 @@ const Trading = () => {
           </div>
         </DialogContent>
       </Dialog>
+      {/* My Posts Modal */}
+      {showMyPostsModal && (
+        <div className="fixed inset-0 z-[60] bg-background/95 backdrop-blur-sm flex flex-col animate-fade-in">
+          <div className="flex items-center justify-between p-4 border-b border-border">
+            <h2 className="text-lg font-semibold">Bài viết của tôi</h2>
+            <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setShowMyPostsModal(false)}>
+              <X className="w-5 h-5" />
+            </Button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 max-w-2xl mx-auto w-full [&_.glass]:overflow-visible [&_[data-radix-popper-content-wrapper]]:z-[70]">
+            {posts.filter(p => p.user_id === user?.id).length === 0 ? (
+              <div className="text-center text-muted-foreground py-12">Bạn chưa có bài viết nào</div>
+            ) : (
+              posts.filter(p => p.user_id === user?.id).map(post => (
+                <TradingPostCard
+                  key={post.id}
+                  post={post}
+                  onDelete={() => { fetchPosts(); }}
+                  onImageClick={setLightboxImage}
+                  onStartConversation={startConversation}
+                />
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </MainLayout>
   );
 };

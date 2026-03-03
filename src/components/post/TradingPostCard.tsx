@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, memo } from 'react';
+import { useState, useEffect, useCallback, memo, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -37,6 +37,33 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+
+const POST_MAX_WORDS = 800;
+const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
+
+const TradingPostContent = memo(({ content }: { content: string }) => {
+  const [expanded, setExpanded] = useState(false);
+  const lines = content.split('\n');
+  const needsTruncation = lines.length > 3 && !expanded;
+  const displayContent = needsTruncation ? lines.slice(0, 3).join('\n') : content;
+  
+  return (
+    <div className="mt-2">
+      <p className="text-sm whitespace-pre-wrap">{displayContent}</p>
+      {needsTruncation && (
+        <button className="text-xs text-primary font-medium hover:underline mt-0.5" onClick={() => setExpanded(true)}>
+          Xem thêm...
+        </button>
+      )}
+      {expanded && lines.length > 3 && (
+        <button className="text-xs text-primary font-medium hover:underline mt-0.5" onClick={() => setExpanded(false)}>
+          Thu gọn
+        </button>
+      )}
+    </div>
+  );
+});
+TradingPostContent.displayName = 'TradingPostContent';
 
 const CATEGORIES = [
   { value: 'tai-khoan-game', label: 'Tài khoản Game', color: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30' },
@@ -173,7 +200,7 @@ export const TradingPostCard = memo(({ post, onDelete, onImageClick, onStartConv
     try {
       const { error } = await supabase
         .from('transaction_posts')
-        .update({ content: editContent.trim() })
+        .update({ content: editContent.trim(), updated_at: new Date().toISOString() })
         .eq('id', post.id);
       if (error) throw error;
       setCurrentContent(editContent.trim());
@@ -203,17 +230,17 @@ export const TradingPostCard = memo(({ post, onDelete, onImageClick, onStartConv
   return (
     <>
       <Card className="glass">
-        <CardContent className="pt-4">
-          <div className="flex items-start gap-3">
-            <Link to={`/profile/${post.user_id}`}>
-              <Avatar className="h-10 w-10">
+        <CardContent className="pt-4 px-3 sm:px-6">
+          <div className="flex items-start gap-2 sm:gap-3">
+            <Link to={`/profile/${post.user_id}`} className="flex-shrink-0">
+              <Avatar className="h-9 w-9 sm:h-10 sm:w-10">
                 <AvatarImage src={post.profiles?.avatar_url || ''} />
                 <AvatarFallback className="bg-primary text-primary-foreground">
                   {(post.profiles?.display_name || post.profiles?.username || 'U').charAt(0).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
             </Link>
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 overflow-hidden">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 flex-wrap">
                   <Link
@@ -230,6 +257,9 @@ export const TradingPostCard = memo(({ post, onDelete, onImageClick, onStartConv
                   <span className="text-xs text-muted-foreground">
                     {formatDistanceToNow(new Date(post.created_at), { addSuffix: true, locale: vi })}
                   </span>
+                  {(post as any).updated_at && (post as any).updated_at !== post.created_at && (
+                    <span className="text-[10px] text-muted-foreground/70 italic">· Đã chỉnh sửa</span>
+                  )}
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -237,7 +267,7 @@ export const TradingPostCard = memo(({ post, onDelete, onImageClick, onStartConv
                       <MoreVertical className="w-4 h-4" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="glass">
+                  <DropdownMenuContent align="end" className="glass z-[80]">
                     {isOwner && (
                       <>
                         <DropdownMenuItem
@@ -269,14 +299,12 @@ export const TradingPostCard = memo(({ post, onDelete, onImageClick, onStartConv
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
-              {currentContent && (
-                <p className="mt-2 text-sm whitespace-pre-wrap">{currentContent}</p>
-              )}
+              {currentContent && <TradingPostContent content={currentContent} />}
               {post.image_url && (
                 <img
                   src={post.image_url}
                   alt="Post"
-                  className="mt-3 rounded-lg max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                  className="mt-3 rounded-lg max-h-80 w-full object-contain cursor-pointer hover:opacity-90 transition-opacity"
                   onClick={() => onImageClick(post.image_url)}
                 />
               )}
@@ -318,10 +346,10 @@ export const TradingPostCard = memo(({ post, onDelete, onImageClick, onStartConv
                 )}
               </div>
 
-              {/* Comments */}
-              <CommentSection postId={post.id} isOpen={showComments} />
             </div>
           </div>
+          {/* Comments - outside the avatar flex so it takes full width */}
+          <CommentSection postId={post.id} isOpen={showComments} />
         </CardContent>
       </Card>
 
@@ -349,12 +377,21 @@ export const TradingPostCard = memo(({ post, onDelete, onImageClick, onStartConv
           <DialogHeader>
             <DialogTitle>Chỉnh sửa bài viết</DialogTitle>
           </DialogHeader>
-          <Textarea
-            value={editContent}
-            onChange={(e) => setEditContent(e.target.value)}
-            placeholder="Nội dung bài viết..."
-            className="min-h-[120px] rounded-xl"
-          />
+          <div className="space-y-2">
+            <Textarea
+              value={editContent}
+              onChange={(e) => {
+                if (countWords(e.target.value) <= POST_MAX_WORDS) {
+                  setEditContent(e.target.value);
+                }
+              }}
+              placeholder="Nội dung bài viết..."
+              className="min-h-[120px] rounded-xl"
+            />
+            <p className={cn('text-xs text-right', countWords(editContent) > POST_MAX_WORDS ? 'text-destructive' : 'text-muted-foreground')}>
+              {countWords(editContent)}/{POST_MAX_WORDS}
+            </p>
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowEditDialog(false)} className="rounded-xl">Hủy</Button>
             <Button onClick={handleEditPost} disabled={isEditing || !editContent.trim()} className="rounded-xl gradient-primary">

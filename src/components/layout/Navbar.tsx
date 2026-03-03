@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, MessageCircle, User, Settings, LogOut, Menu, X, Search, Bell, Shield, UserPlus, Sparkles, Reply } from 'lucide-react';
+import { Home, MessageCircle, User, Settings, LogOut, Menu, X, Search, Bell, Shield, UserPlus, Sparkles, Reply, ShoppingBag } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -427,13 +427,23 @@ export const Navbar = () => {
     <nav className="fixed top-0 left-0 right-0 z-50 glass border-b border-border/50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          {/* Logo */}
-          <Link to="/" className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center shadow-glow">
-              <span className="text-xl font-bold text-primary-foreground">A</span>
-            </div>
-            <span className="text-xl font-bold gradient-text hidden sm:block">Annd</span>
-          </Link>
+          {/* Logo + Mobile Trading & Bell */}
+          <div className="flex items-center gap-2">
+            <Link to="/" className="flex items-center gap-2">
+              <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center shadow-glow">
+                <span className="text-xl font-bold text-primary-foreground">A</span>
+              </div>
+              <span className="text-xl font-bold gradient-text hidden sm:block">Annd</span>
+            </Link>
+
+            {/* Mobile: Trading shortcut */}
+            <Link
+              to="/trading"
+              className="md:hidden flex items-center justify-center w-9 h-9 rounded-xl hover:bg-secondary transition-colors"
+            >
+              <ShoppingBag className="w-5 h-5 text-muted-foreground" />
+            </Link>
+          </div>
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center gap-1">

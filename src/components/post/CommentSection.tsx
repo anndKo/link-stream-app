@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, memo, useMemo, useRef } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { Send, Trash2, Reply, CornerDownRight, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { ReactionViewersModal } from './ReactionViewersModal';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -105,41 +106,64 @@ const ReactionButton = memo(({ userReaction, commentId, onReaction }: {
 });
 ReactionButton.displayName = 'ReactionButton';
 
+const COMMENT_MAX_WORDS = 150;
+
+const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
+
 // Render @mention - click scrolls to that user's comment
 const CommentContent = memo(({ content, comments, onMentionClick }: { 
   content: string; 
   comments: Comment[];
   onMentionClick: (userId: string) => void;
 }) => {
+  const [expanded, setExpanded] = useState(false);
   const mentionRegex = /(@\S+)/g;
   const parts = content.split(mentionRegex);
 
+  // Check if content exceeds 3 lines (~120 chars as heuristic)
+  const needsTruncation = content.length > 120 && !expanded;
+  const displayContent = needsTruncation ? content.slice(0, 120) : content;
+  const displayParts = displayContent.split(mentionRegex);
+
   return (
-    <p className="text-sm whitespace-pre-wrap break-words">
-      {parts.map((part, i) => {
-        if (part.startsWith('@')) {
-          const name = part.slice(1);
-          const mentioned = comments.find(
-            c => c.profile?.display_name === name || c.profile?.username === name
-          );
-          if (mentioned) {
-            return (
-              <button
-                key={i}
-                className="text-primary font-medium hover:underline"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onMentionClick(mentioned.user_id);
-                }}
-              >
-                {part}
-              </button>
+    <div>
+      <p className="text-sm whitespace-pre-wrap break-words">
+        {displayParts.map((part, i) => {
+          if (part.startsWith('@')) {
+            const name = part.slice(1);
+            const mentioned = comments.find(
+              c => c.profile?.display_name === name || c.profile?.username === name
             );
+            if (mentioned) {
+              return (
+                <button
+                  key={i}
+                  className="text-primary font-medium hover:underline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onMentionClick(mentioned.user_id);
+                  }}
+                >
+                  {part}
+                </button>
+              );
+            }
           }
-        }
-        return <span key={i}>{part}</span>;
-      })}
-    </p>
+          return <span key={i}>{part}</span>;
+        })}
+        {needsTruncation && '... '}
+        {needsTruncation && (
+          <button className="text-xs text-primary font-medium hover:underline" onClick={() => setExpanded(true)}>
+            Xem thêm
+          </button>
+        )}
+      </p>
+      {expanded && content.length > 120 && (
+        <button className="text-xs text-primary font-medium hover:underline mt-0.5" onClick={() => setExpanded(false)}>
+          Thu gọn
+        </button>
+      )}
+    </div>
   );
 });
 CommentContent.displayName = 'CommentContent';
@@ -416,6 +440,11 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
     }, replies[0]);
   }, []);
 
+  const commentWordCount = useMemo(() => countWords(newComment), [newComment]);
+  const isOverLimit = commentWordCount > COMMENT_MAX_WORDS;
+
+  const [reactionModalForComment, setReactionModalForComment] = useState<string | null>(null);
+
   const renderReactionSummary = useCallback((comment: Comment) => {
     const totalReactions = comment.reactions?.length || 0;
     if (totalReactions === 0) return null;
@@ -426,14 +455,27 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
     });
 
     return (
-      <div className="flex items-center gap-0.5 ml-auto flex-shrink-0">
-        {[...reactionGroups.entries()].slice(0, 3).map(([emoji]) => (
-          <span key={emoji} className="text-xs">{emoji}</span>
-        ))}
-        <span className="text-xs text-muted-foreground ml-0.5">{totalReactions}</span>
+      <div className="relative ml-auto flex-shrink-0">
+        <button
+          className="flex items-center gap-0.5 hover:bg-secondary/50 rounded-full px-1.5 py-0.5 transition-colors"
+          onClick={(e) => {
+            e.stopPropagation();
+            setReactionModalForComment(prev => prev === comment.id ? null : comment.id);
+          }}
+        >
+          {[...reactionGroups.entries()].slice(0, 3).map(([emoji]) => (
+            <span key={emoji} className="text-xs">{emoji}</span>
+          ))}
+          <span className="text-xs text-muted-foreground ml-0.5">{totalReactions}</span>
+        </button>
+        <ReactionViewersModal
+          open={reactionModalForComment === comment.id}
+          onClose={() => setReactionModalForComment(null)}
+          reactions={comment.reactions || []}
+        />
       </div>
     );
-  }, []);
+  }, [reactionModalForComment]);
 
   const renderComment = useCallback((comment: Comment, isReply = false) => {
     const displayName = comment.profile?.display_name || comment.profile?.username || 'Người dùng';
@@ -446,7 +488,7 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
         id={`comment-${comment.id}`}
         className={cn(
           'flex gap-2 group relative transition-colors duration-500',
-          isReply && 'ml-6 sm:ml-10',
+          isReply && 'ml-4 sm:ml-10',
           isHighlighted && 'bg-primary/10 rounded-xl'
         )}
       >
@@ -530,7 +572,7 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
                       <>
                         {(comment.replies || []).map(reply => renderComment(reply, true))}
                         <button
-                          className="ml-10 sm:ml-14 text-xs text-primary font-medium flex items-center gap-1 hover:underline"
+                          className="ml-6 sm:ml-14 text-xs text-primary font-medium flex items-center gap-1 hover:underline"
                           onClick={() => setExpandedReplies(prev => { const n = new Set(prev); n.delete(comment.id); return n; })}
                         >
                           <ChevronUp className="w-3 h-3" />
@@ -542,7 +584,7 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
                         {topReply && renderComment(topReply, true)}
                         {replyCount > 1 && (
                           <button
-                            className="ml-10 sm:ml-14 text-xs text-primary font-medium flex items-center gap-1 hover:underline"
+                            className="ml-6 sm:ml-14 text-xs text-primary font-medium flex items-center gap-1 hover:underline"
                             onClick={() => setExpandedReplies(prev => new Set(prev).add(comment.id))}
                           >
                             <ChevronDown className="w-3 h-3" />
@@ -575,14 +617,24 @@ export const CommentSection = memo(({ postId, isOpen }: CommentSectionProps) => 
             </div>
           )}
           <form onSubmit={handleSubmit} className="flex gap-2">
-            <Input
-              ref={inputRef}
-              value={newComment}
-              onChange={(e) => setNewComment(e.target.value)}
-              placeholder={replyingTo ? `Trả lời ${replyingTo.username}...` : 'Viết bình luận...'}
-              className="flex-1 rounded-xl h-9 text-sm"
-            />
-            <Button type="submit" size="icon" disabled={!newComment.trim() || isSubmitting} className="rounded-xl h-9 w-9 flex-shrink-0">
+            <div className="flex-1 relative">
+              <Input
+                ref={inputRef}
+                value={newComment}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (countWords(val) <= COMMENT_MAX_WORDS) {
+                    setNewComment(val);
+                  }
+                }}
+                placeholder={replyingTo ? `Trả lời ${replyingTo.username}...` : 'Viết bình luận...'}
+                className="flex-1 rounded-xl h-9 text-sm pr-16"
+              />
+              <span className={cn('absolute right-2 top-1/2 -translate-y-1/2 text-[10px]', isOverLimit ? 'text-destructive' : 'text-muted-foreground')}>
+                {commentWordCount}/{COMMENT_MAX_WORDS}
+              </span>
+            </div>
+            <Button type="submit" size="icon" disabled={!newComment.trim() || isSubmitting || isOverLimit} className="rounded-xl h-9 w-9 flex-shrink-0">
               <Send className="w-4 h-4" />
             </Button>
           </form>

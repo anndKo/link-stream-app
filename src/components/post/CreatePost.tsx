@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, memo } from 'react';
+import { Link } from 'react-router-dom';
 import { Image, X, Send, Globe, Lock, Users } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -6,6 +7,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
+
+const POST_MAX_WORDS = 800;
+const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
 import { EmojiPickerPopover } from '@/components/ui/emoji-picker-popover';
 import {
   Select,
@@ -132,20 +137,31 @@ export const CreatePost = memo(({ onPostCreated }: CreatePostProps) => {
   return (
     <div className="glass rounded-2xl p-5 animate-fade-in">
       <div className="flex gap-4">
-        <Avatar className="h-12 w-12 ring-2 ring-primary/20">
-          <AvatarImage src={profile?.avatar_url || ''} />
-          <AvatarFallback className="bg-primary text-primary-foreground">
-            {profile?.display_name?.charAt(0).toUpperCase() || 'U'}
-          </AvatarFallback>
-        </Avatar>
+        <Link to={`/profile/${user?.id}`} className="flex-shrink-0">
+          <Avatar className="h-12 w-12 ring-2 ring-primary/20 hover:ring-primary/40 transition-all">
+            <AvatarImage src={profile?.avatar_url || ''} />
+            <AvatarFallback className="bg-primary text-primary-foreground">
+              {profile?.display_name?.charAt(0).toUpperCase() || 'U'}
+            </AvatarFallback>
+          </Avatar>
+        </Link>
 
         <div className="flex-1 space-y-4">
-          <Textarea
-            ref={textareaRef}
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder="Bạn đang nghĩ gì?"
-            className="min-h-[100px] resize-none border-0 bg-secondary/50 rounded-xl focus-visible:ring-primary" />
+          <div className="space-y-1">
+            <Textarea
+              ref={textareaRef}
+              value={content}
+              onChange={(e) => {
+                if (countWords(e.target.value) <= POST_MAX_WORDS) {
+                  setContent(e.target.value);
+                }
+              }}
+              placeholder="Bạn đang nghĩ gì?"
+              className="min-h-[100px] resize-none border-0 bg-secondary/50 rounded-xl focus-visible:ring-primary" />
+            <p className={cn('text-xs text-right', countWords(content) > POST_MAX_WORDS ? 'text-destructive' : 'text-muted-foreground')}>
+              {countWords(content)}/{POST_MAX_WORDS}
+            </p>
+          </div>
 
 
           {imagePreview &&
@@ -166,8 +182,8 @@ export const CreatePost = memo(({ onPostCreated }: CreatePostProps) => {
             </div>
           }
 
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <div className="flex gap-2 items-center">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex gap-1 sm:gap-2 items-center flex-wrap flex-1 min-w-0">
               <input
                 ref={fileInputRef}
                 type="file"

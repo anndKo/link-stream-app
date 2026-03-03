@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, memo } from 'react';
+import { useState, useEffect, useCallback, memo, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -45,6 +45,33 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+
+const POST_MAX_WORDS = 800;
+const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
+
+const PostContent = memo(({ content }: { content: string }) => {
+  const [expanded, setExpanded] = useState(false);
+  const lines = content.split('\n');
+  const needsTruncation = lines.length > 3 && !expanded;
+  const displayContent = needsTruncation ? lines.slice(0, 3).join('\n') : content;
+  
+  return (
+    <div className="mb-4">
+      <p className="text-foreground whitespace-pre-wrap leading-relaxed">{displayContent}</p>
+      {needsTruncation && (
+        <button className="text-sm text-primary font-medium hover:underline mt-1" onClick={() => setExpanded(true)}>
+          Xem thêm...
+        </button>
+      )}
+      {expanded && lines.length > 3 && (
+        <button className="text-sm text-primary font-medium hover:underline mt-1" onClick={() => setExpanded(false)}>
+          Thu gọn
+        </button>
+      )}
+    </div>
+  );
+});
+PostContent.displayName = 'PostContent';
 
 interface PostCardProps {
   post: Post;
@@ -166,7 +193,7 @@ export const PostCard = memo(({ post, onDelete }: PostCardProps) => {
     if (!isOwner || !editContent.trim()) return;
     setIsEditing(true);
     try {
-      const { error } = await supabase.from('posts').update({ content: editContent.trim() }).eq('id', post.id);
+      const { error } = await supabase.from('posts').update({ content: editContent.trim(), updated_at: new Date().toISOString() }).eq('id', post.id);
       if (error) throw error;
       setCurrentContent(editContent.trim());
       toast({ title: 'Đã cập nhật bài viết' });
@@ -226,27 +253,27 @@ export const PostCard = memo(({ post, onDelete }: PostCardProps) => {
   const displayName = profile?.display_name || profile?.username || 'Người dùng';
 
   const actionsBar = (
-    <div className="flex items-center gap-2 pt-3 border-t border-border/50">
+    <div className="flex items-center gap-1 sm:gap-2 pt-3 border-t border-border/50">
       <Button
         variant="ghost" size="sm"
-        className={cn('rounded-xl gap-2 flex-1', liked && 'text-destructive hover:text-destructive')}
+        className={cn('rounded-xl gap-1.5 flex-1 px-2 sm:px-3', liked && 'text-destructive hover:text-destructive')}
         onClick={handleLike}
         disabled={isLiking || !user}
       >
-        <Heart className={cn('w-5 h-5', liked && 'fill-current')} />
-        <span>{likeCount} Thích</span>
+        <Heart className={cn('w-4 h-4 sm:w-5 sm:h-5', liked && 'fill-current')} />
+        <span className="text-xs sm:text-sm">{likeCount} <span className="hidden sm:inline">Thích</span></span>
       </Button>
       <Button
         variant="ghost" size="sm"
-        className={cn('rounded-xl gap-2 flex-1', showComments && 'bg-secondary')}
+        className={cn('rounded-xl gap-1.5 flex-1 px-2 sm:px-3', showComments && 'bg-secondary')}
         onClick={() => setShowComments(!showComments)}
       >
-        <MessageCircle className="w-5 h-5" />
-        <span>{commentCount} Bình luận</span>
+        <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+        <span className="text-xs sm:text-sm">{commentCount} <span className="hidden sm:inline">Bình luận</span></span>
       </Button>
-      <Button variant="ghost" size="sm" className="rounded-xl gap-2 flex-1" onClick={handleShare}>
-        <Share2 className="w-5 h-5" />
-        <span>Chia sẻ</span>
+      <Button variant="ghost" size="sm" className="rounded-xl gap-1.5 flex-1 px-2 sm:px-3" onClick={handleShare}>
+        <Share2 className="w-4 h-4 sm:w-5 sm:h-5" />
+        <span className="text-xs sm:text-sm hidden sm:inline">Chia sẻ</span>
       </Button>
     </div>
   );
@@ -271,7 +298,10 @@ export const PostCard = memo(({ post, onDelete }: PostCardProps) => {
                 ) : displayName}
               </h3>
               <p className="text-sm text-muted-foreground flex items-center gap-1">
-                @{profile?.username || 'unknown'} · {formatDistanceToNow(new Date(post.created_at), { addSuffix: true, locale: vi })}
+                {formatDistanceToNow(new Date(post.created_at), { addSuffix: true, locale: vi })}
+                {(post as any).updated_at && (post as any).updated_at !== post.created_at && (
+                  <span className="text-xs text-muted-foreground/70 italic ml-1">· Đã chỉnh sửa</span>
+                )}
                 {isPrivate ? <Lock className="w-3 h-3 ml-1" /> : isFriends ? <Users className="w-3 h-3 ml-1" /> : <Globe className="w-3 h-3 ml-1" />}
               </p>
             </div>
@@ -332,14 +362,12 @@ export const PostCard = memo(({ post, onDelete }: PostCardProps) => {
         </div>
 
         {/* Content */}
-        {currentContent && (
-          <p className="text-foreground mb-4 whitespace-pre-wrap leading-relaxed">{currentContent}</p>
-        )}
+        {currentContent && <PostContent content={currentContent} />}
 
-        {/* Image */}
+        {/* Edited label inline with time */}
         {post.image_url && (
           <div className="mb-4 rounded-xl overflow-hidden cursor-pointer" onClick={() => setFullscreenOpen(true)}>
-            <img src={post.image_url} alt="Post image" className="w-full h-auto object-contain hover:scale-[1.02] transition-transform duration-500" loading="lazy" />
+            <img src={post.image_url} alt="Post image" className="w-full max-h-[500px] object-contain hover:scale-[1.02] transition-transform duration-500" loading="lazy" />
           </div>
         )}
 
@@ -364,7 +392,7 @@ export const PostCard = memo(({ post, onDelete }: PostCardProps) => {
               <div>
                 <h3 className="font-semibold">{displayName}</h3>
                 <p className="text-sm text-muted-foreground">
-                  @{profile?.username || 'unknown'} · {formatDistanceToNow(new Date(post.created_at), { addSuffix: true, locale: vi })}
+                  {formatDistanceToNow(new Date(post.created_at), { addSuffix: true, locale: vi })}
                 </p>
               </div>
             </div>
@@ -403,10 +431,17 @@ export const PostCard = memo(({ post, onDelete }: PostCardProps) => {
           <div className="space-y-4">
             <Textarea
               value={editContent}
-              onChange={(e) => setEditContent(e.target.value)}
+              onChange={(e) => {
+                if (countWords(e.target.value) <= POST_MAX_WORDS) {
+                  setEditContent(e.target.value);
+                }
+              }}
               placeholder="Nội dung bài viết..."
               className="min-h-[120px] rounded-xl"
             />
+            <p className={cn('text-xs text-right', countWords(editContent) > POST_MAX_WORDS ? 'text-destructive' : 'text-muted-foreground')}>
+              {countWords(editContent)}/{POST_MAX_WORDS}
+            </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowEditDialog(false)} className="rounded-xl">Hủy</Button>
@@ -416,6 +451,7 @@ export const PostCard = memo(({ post, onDelete }: PostCardProps) => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
 
       {/* Edit Visibility Dialog */}
       <Dialog open={showVisibilityDialog} onOpenChange={setShowVisibilityDialog}>
