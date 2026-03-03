@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, memo, useMemo } from 'react';
+import { useState, useEffect, useCallback, memo, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
-import { Heart, MessageCircle, Share2, MoreVertical, Trash2, Pencil, Flag } from 'lucide-react';
+import { Heart, MessageCircle, Share2, MoreVertical, Trash2, Pencil, Flag, X, Image as ImageIcon, Send } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -93,7 +93,7 @@ interface TradingPostCardProps {
   post: TradingPost;
   onDelete: () => void;
   onImageClick: (url: string | null) => void;
-  onStartConversation: (userId: string) => void;
+  onStartConversation: (userId: string, post?: TradingPost) => void;
 }
 
 export const TradingPostCard = memo(({ post, onDelete, onImageClick, onStartConversation }: TradingPostCardProps) => {
@@ -109,6 +109,11 @@ export const TradingPostCard = memo(({ post, onDelete, onImageClick, onStartConv
   const [editContent, setEditContent] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [currentContent, setCurrentContent] = useState(post.content || '');
+  const [currentImageUrl, setCurrentImageUrl] = useState(post.image_url || null);
+  const [editImageFile, setEditImageFile] = useState<File | null>(null);
+  const [editImagePreview, setEditImagePreview] = useState<string | null>(null);
+  const [editImageRemoved, setEditImageRemoved] = useState(false);
+  const editImageInputRef = useRef<HTMLInputElement>(null);
 
   const isOwner = user?.id === post.user_id;
 
@@ -195,15 +200,31 @@ export const TradingPostCard = memo(({ post, onDelete, onImageClick, onStartConv
   }, [post.id, user?.id, onDelete]);
 
   const handleEditPost = useCallback(async () => {
-    if (!isOwner || !editContent.trim()) return;
+    if (!isOwner || (!editContent.trim() && !editImagePreview)) return;
     setIsEditing(true);
     try {
+      let newImageUrl = currentImageUrl;
+
+      if (editImageFile) {
+        const fileExt = editImageFile.name.split('.').pop();
+        const fileName = `${user!.id}/${Date.now()}.${fileExt}`;
+        const { error: uploadError } = await supabase.storage.from('posts').upload(fileName, editImageFile);
+        if (uploadError) throw uploadError;
+        const { data: { publicUrl } } = supabase.storage.from('posts').getPublicUrl(fileName);
+        newImageUrl = publicUrl;
+      } else if (editImageRemoved) {
+        newImageUrl = null;
+      }
+
       const { error } = await supabase
         .from('transaction_posts')
-        .update({ content: editContent.trim(), updated_at: new Date().toISOString() })
+        .update({ content: editContent.trim() || null, image_url: newImageUrl, updated_at: new Date().toISOString() })
         .eq('id', post.id);
       if (error) throw error;
       setCurrentContent(editContent.trim());
+      setCurrentImageUrl(newImageUrl);
+      setEditImageFile(null);
+      setEditImageRemoved(false);
       toast({ title: 'Đã cập nhật bài viết' });
       setShowEditDialog(false);
       onDelete(); // refresh
@@ -212,7 +233,7 @@ export const TradingPostCard = memo(({ post, onDelete, onImageClick, onStartConv
     } finally {
       setIsEditing(false);
     }
-  }, [isOwner, editContent, post.id, onDelete]);
+  }, [isOwner, editContent, editImageFile, editImageRemoved, editImagePreview, currentImageUrl, post.id, user, onDelete]);
 
   const handleShare = useCallback(async () => {
     try {
@@ -273,6 +294,9 @@ export const TradingPostCard = memo(({ post, onDelete, onImageClick, onStartConv
                         <DropdownMenuItem
                           onClick={() => {
                             setEditContent(currentContent);
+                            setEditImagePreview(currentImageUrl);
+                            setEditImageFile(null);
+                            setEditImageRemoved(false);
                             setShowEditDialog(true);
                           }}
                           className="cursor-pointer"
@@ -300,50 +324,50 @@ export const TradingPostCard = memo(({ post, onDelete, onImageClick, onStartConv
                 </DropdownMenu>
               </div>
               {currentContent && <TradingPostContent content={currentContent} />}
-              {post.image_url && (
+              {currentImageUrl && (
                 <img
-                  src={post.image_url}
+                  src={currentImageUrl}
                   alt="Post"
-                  className="mt-3 rounded-lg max-h-80 w-full object-contain cursor-pointer hover:opacity-90 transition-opacity"
-                  onClick={() => onImageClick(post.image_url)}
+                  className="mt-3 rounded-lg max-h-80 w-full object-contain cursor-pointer hover:opacity-90 transition-opacity mx-auto"
+                  onClick={() => onImageClick(currentImageUrl)}
                 />
               )}
 
+              {/* Message button - above action bar */}
+              {user?.id !== post.user_id && (
+                <Button
+                  variant="outline" size="sm"
+                  className="rounded-xl gap-1.5 w-full h-8 text-xs mt-3"
+                  onClick={() => onStartConversation(post.user_id, post)}
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  Nhắn tin
+                </Button>
+              )}
+
               {/* Action buttons */}
-              <div className="flex items-center gap-1 mt-3 pt-3 border-t border-border/50">
+              <div className="flex items-center justify-center gap-1 mt-3 pt-3 border-t border-border/50">
                 <Button
                   variant="ghost" size="sm"
-                  className={cn('rounded-xl gap-1.5 flex-1 h-8 text-xs', liked && 'text-destructive hover:text-destructive')}
+                  className={cn('rounded-xl gap-1 flex-1 h-8 text-xs px-1', liked && 'text-destructive hover:text-destructive')}
                   onClick={handleLike}
                   disabled={isLiking || !user}
                 >
-                  <Heart className={cn('w-4 h-4', liked && 'fill-current')} />
-                  {likeCount > 0 && <span>{likeCount}</span>}
-                  <span className="hidden sm:inline">Thích</span>
+                  <Heart className={cn('w-3.5 h-3.5', liked && 'fill-current')} />
+                  <span className="truncate">{likeCount > 0 ? likeCount + ' ' : ''}Thích</span>
                 </Button>
                 <Button
                   variant="ghost" size="sm"
-                  className={cn('rounded-xl gap-1.5 flex-1 h-8 text-xs', showComments && 'bg-secondary')}
+                  className={cn('rounded-xl gap-1 flex-1 h-8 text-xs px-1', showComments && 'bg-secondary')}
                   onClick={() => setShowComments(!showComments)}
                 >
-                  <MessageCircle className="w-4 h-4" />
-                  {commentCount > 0 && <span>{commentCount}</span>}
-                  <span className="hidden sm:inline">Bình luận</span>
+                  <MessageCircle className="w-3.5 h-3.5" />
+                  <span className="truncate">{commentCount > 0 ? commentCount + ' ' : ''}Bình luận</span>
                 </Button>
-                <Button variant="ghost" size="sm" className="rounded-xl gap-1.5 flex-1 h-8 text-xs" onClick={handleShare}>
-                  <Share2 className="w-4 h-4" />
-                  <span className="hidden sm:inline">Chia sẻ</span>
+                <Button variant="ghost" size="sm" className="rounded-xl gap-1 flex-1 h-8 text-xs px-1" onClick={handleShare}>
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span className="truncate">Chia sẻ</span>
                 </Button>
-                {user?.id !== post.user_id && (
-                  <Button
-                    variant="ghost" size="sm"
-                    className="rounded-xl gap-1.5 flex-1 h-8 text-xs"
-                    onClick={() => onStartConversation(post.user_id)}
-                  >
-                    <MessageCircle className="w-4 h-4" />
-                    <span className="hidden sm:inline">Nhắn tin</span>
-                  </Button>
-                )}
               </div>
 
             </div>
@@ -377,7 +401,7 @@ export const TradingPostCard = memo(({ post, onDelete, onImageClick, onStartConv
           <DialogHeader>
             <DialogTitle>Chỉnh sửa bài viết</DialogTitle>
           </DialogHeader>
-          <div className="space-y-2">
+          <div className="space-y-4">
             <Textarea
               value={editContent}
               onChange={(e) => {
@@ -391,10 +415,58 @@ export const TradingPostCard = memo(({ post, onDelete, onImageClick, onStartConv
             <p className={cn('text-xs text-right', countWords(editContent) > POST_MAX_WORDS ? 'text-destructive' : 'text-muted-foreground')}>
               {countWords(editContent)}/{POST_MAX_WORDS}
             </p>
+            {/* Image edit section */}
+            {editImagePreview ? (
+              <div className="relative inline-block">
+                <img src={editImagePreview} alt="Preview" className="max-h-48 rounded-xl object-cover" />
+                <Button
+                  variant="destructive"
+                  size="icon"
+                  className="absolute top-2 right-2 h-7 w-7 rounded-full"
+                  onClick={() => {
+                    setEditImageFile(null);
+                    setEditImagePreview(null);
+                    setEditImageRemoved(true);
+                  }}
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-xl gap-2"
+                onClick={() => editImageInputRef.current?.click()}
+              >
+                <ImageIcon className="w-4 h-4" />
+                Thêm ảnh
+              </Button>
+            )}
+            <input
+              ref={editImageInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  if (file.size > 5 * 1024 * 1024) {
+                    toast({ title: 'Lỗi', description: 'Ảnh không được vượt quá 5MB', variant: 'destructive' });
+                    return;
+                  }
+                  setEditImageFile(file);
+                  const reader = new FileReader();
+                  reader.onload = () => setEditImagePreview(reader.result as string);
+                  reader.readAsDataURL(file);
+                  setEditImageRemoved(false);
+                }
+              }}
+            />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowEditDialog(false)} className="rounded-xl">Hủy</Button>
-            <Button onClick={handleEditPost} disabled={isEditing || !editContent.trim()} className="rounded-xl gradient-primary">
+            <Button onClick={handleEditPost} disabled={isEditing || (!editContent.trim() && !editImagePreview)} className="rounded-xl gradient-primary">
               {isEditing ? 'Đang lưu...' : 'Lưu thay đổi'}
             </Button>
           </DialogFooter>

@@ -712,7 +712,7 @@ const Trading = () => {
   };
 
   // Start conversation with user
-  const startConversation = async (userId: string) => {
+  const startConversation = async (userId: string, postData?: TradingPost) => {
     if (!user) return;
     
     const existingConvo = conversations.find(c => c.id === userId);
@@ -748,6 +748,36 @@ const Trading = () => {
         }
       } catch (error) {
         console.error('Error fetching user profile:', error);
+      }
+    }
+
+    // Send auto-generated message with post info
+    if (postData) {
+      try {
+        let autoContent = '📋 Tôi quan tâm đến bài viết này:\n\n';
+        if (postData.content) {
+          const truncated = postData.content.length > 100 ? postData.content.slice(0, 100) + '...' : postData.content;
+          autoContent += `"${truncated}"`;
+        }
+        if (postData.image_url) {
+          autoContent += '\n📷 [Có ảnh đính kèm]';
+        }
+        if (postData.category) {
+          const cat = CATEGORIES.find(c => c.value === postData.category);
+          autoContent += `\n🏷️ ${cat?.label || postData.category}`;
+        }
+
+        await supabase.from('transaction_messages').insert({
+          sender_id: user.id,
+          receiver_id: userId,
+          content: autoContent,
+          image_url: postData.image_url || null
+        });
+
+        fetchConversations();
+        fetchMessages();
+      } catch (error) {
+        console.error('Error sending auto message:', error);
       }
     }
     
@@ -2106,7 +2136,7 @@ const Trading = () => {
                   post={post}
                   onDelete={fetchPosts}
                   onImageClick={setLightboxImage}
-                  onStartConversation={startConversation}
+                  onStartConversation={(userId, postData) => startConversation(userId, postData)}
                 />
               ))}
 
