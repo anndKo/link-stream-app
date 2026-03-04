@@ -176,7 +176,7 @@ export const CreatePost = memo(({ onPostCreated }: CreatePostProps) => {
             </div>
           )}
 
-          <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
+          <div className="flex items-center gap-1 sm:gap-2 flex-nowrap">
               <input
                 ref={fileInputRef}
                 type="file"

@@ -747,36 +747,34 @@ export const Navbar = () => {
 
       {/* Mobile Navigation */}
       {mobileMenuOpen && (
-        <div className="md:hidden glass border-t border-border/50 animate-slide-up">
-          <div className="px-4 py-3 space-y-2">
-            {navItems.map(item => (
-              <Link 
-                key={item.href} 
-                to={item.href} 
-                onClick={() => setMobileMenuOpen(false)} 
-                className={cn(
-                  'flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200', 
-                  location.pathname === item.href 
-                    ? 'bg-primary text-primary-foreground' 
-                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
-                )}
-              >
-                <item.icon className="w-5 h-5" />
-                <span className="font-medium">{item.label}</span>
-              </Link>
-            ))}
-            {/* Theme Toggle in mobile menu */}
-            <div className="flex items-center gap-3 px-4 py-3 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary transition-all duration-200 cursor-pointer"
-              onClick={() => {
-                const toggle = document.querySelector('[data-theme-toggle]') as HTMLButtonElement;
-                toggle?.click();
-              }}
-            >
-              <ThemeToggle />
-              <span className="font-medium">Chế độ tối</span>
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setMobileMenuOpen(false)} />
+          <div className="md:hidden glass border-t border-border/50 animate-slide-up relative z-50">
+            <div className="px-4 py-3 space-y-2">
+              {navItems.map(item => (
+                <Link 
+                  key={item.href} 
+                  to={item.href} 
+                  onClick={() => setMobileMenuOpen(false)} 
+                  className={cn(
+                    'flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200', 
+                    location.pathname === item.href 
+                      ? 'bg-primary text-primary-foreground' 
+                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                  )}
+                >
+                  <item.icon className="w-5 h-5" />
+                  <span className="font-medium">{item.label}</span>
+                </Link>
+              ))}
+              {/* Theme Toggle in mobile menu - aligned with icons above */}
+              <div className="flex items-center gap-3 px-4 py-3 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary transition-all duration-200 cursor-pointer">
+                <ThemeToggle />
+                <span className="font-medium">Chế độ tối</span>
+              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
     </nav>
   );
