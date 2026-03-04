@@ -10,6 +10,16 @@ import { supabase } from '@/integrations/supabase/client';
 import { Message, Profile, Conversation, DeletionDisableRequest, MessageDeletionSetting } from '@/types/database';
 import { Send, Image, Search, MoreVertical, Flag, ArrowLeft, MessageCircle, Smile, X, Edit, Trash2, Reply, Clock, Check, XCircle, ArrowDown, Settings2, Volume2, VolumeX } from 'lucide-react';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -463,8 +473,6 @@ const Messages = () => {
   };
 
   const handleDeleteMessage = async (messageId: string) => {
-    if (!confirm('Xóa tin nhắn này? Tin nhắn sẽ bị xóa với cả hai bên.')) return;
-
     try {
       const { error } = await supabase
         .from('messages')
@@ -532,6 +540,8 @@ const Messages = () => {
     setSelectedConversation(null);
     setReplyingTo(null);
   }, []);
+
+  const [deleteMessageId, setDeleteMessageId] = useState<string | null>(null);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -755,8 +765,8 @@ const Messages = () => {
                         )}
                       >
                         <div className={cn(
-                          "max-w-[75%] relative group",
-                          msg.sender_id === user?.id ? "pr-2" : "pl-2"
+                          "max-w-[70%] sm:max-w-[75%] relative group",
+                          msg.sender_id === user?.id ? "pr-1 sm:pr-2" : "pl-1 sm:pl-2"
                         )}>
                           {/* Message actions for receiver - Reply button */}
                           {msg.sender_id !== user?.id && (
@@ -803,7 +813,7 @@ const Messages = () => {
                                   </DropdownMenuItem>
                                 )}
                                 <DropdownMenuItem
-                                  onClick={() => handleDeleteMessage(msg.id)}
+                                  onClick={() => setDeleteMessageId(msg.id)}
                                   className="text-destructive focus:text-destructive cursor-pointer"
                                 >
                                   <Trash2 className="w-4 h-4 mr-2" />
@@ -826,18 +836,18 @@ const Messages = () => {
                             {msg.reply_to && (
                               <div 
                                 className={cn(
-                                  "px-3 py-2 border-b cursor-pointer hover:opacity-80",
+                                  "px-3 py-1.5 border-l-2 mx-2 mt-2 mb-0 rounded cursor-pointer hover:opacity-80 transition-opacity",
                                   msg.sender_id === user?.id 
-                                    ? "bg-black/20 border-white/10" 
-                                    : "bg-muted/50 border-border/50"
+                                    ? "bg-black/15 border-white/40" 
+                                    : "bg-muted/40 border-primary/40"
                                 )}
                                 onClick={() => scrollToMessage(msg.reply_to!.id)}
                               >
-                                <div className="flex items-center gap-1 text-[10px] opacity-70 mb-0.5">
-                                  <Reply className="w-3 h-3" />
+                                <div className="flex items-center gap-1 text-[10px] opacity-60 mb-0.5">
+                                  <Reply className="w-2.5 h-2.5" />
                                   <span>Trả lời</span>
                                 </div>
-                                <p className="text-xs truncate opacity-80">
+                                <p className="text-xs truncate opacity-70">
                                   {msg.reply_to.image_url && !msg.reply_to.content 
                                     ? '📷 Hình ảnh' 
                                     : msg.reply_to.content}
@@ -941,10 +951,7 @@ const Messages = () => {
                       </Button>
                     </div>
                   )}
-                  <div className="flex items-center gap-2">
-                    <Button variant="ghost" size="icon" className="rounded-xl shrink-0">
-                      <Smile className="w-5 h-5" />
-                    </Button>
+                    <div className="flex items-center gap-1 sm:gap-2">
                     <input
                       type="file"
                       ref={fileInputRef}
@@ -955,7 +962,7 @@ const Messages = () => {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="rounded-xl shrink-0"
+                      className="rounded-xl shrink-0 h-9 w-9 sm:h-10 sm:w-10"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={isUploadingImage}
                     >
@@ -966,16 +973,16 @@ const Messages = () => {
                       value={newMessage}
                       onChange={(e) => setNewMessage(e.target.value)}
                       placeholder="Nhập tin nhắn..."
-                      className="flex-1 h-10 px-4 rounded-xl bg-secondary/50 border border-input focus:outline-none focus:ring-2 focus:ring-ring"
+                      className="flex-1 min-w-0 h-9 sm:h-10 px-3 sm:px-4 rounded-xl bg-secondary/50 border border-input focus:outline-none focus:ring-2 focus:ring-ring text-sm"
                       onKeyDown={handleKeyDown}
                     />
                     <Button
                       onClick={sendMessage}
                       disabled={isSending || isUploadingImage || (!newMessage.trim() && !selectedImage)}
                       size="icon"
-                      className="rounded-xl gradient-primary shadow-glow shrink-0"
+                      className="rounded-xl gradient-primary shadow-glow shrink-0 h-9 w-9 sm:h-10 sm:w-10"
                     >
-                      <Send className="w-5 h-5" />
+                      <Send className="w-4 h-4 sm:w-5 sm:h-5" />
                     </Button>
                   </div>
                 </div>
@@ -1072,6 +1079,32 @@ const Messages = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteMessageId} onOpenChange={(open) => !open && setDeleteMessageId(null)}>
+        <AlertDialogContent className="glass">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xóa tin nhắn</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tin nhắn sẽ bị xóa với cả hai bên. Bạn có chắc chắn muốn xóa?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-xl">Hủy</AlertDialogCancel>
+            <AlertDialogAction
+              className="rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (deleteMessageId) {
+                  handleDeleteMessage(deleteMessageId);
+                  setDeleteMessageId(null);
+                }
+              }}
+            >
+              Xóa
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </MainLayout>
   );
 };

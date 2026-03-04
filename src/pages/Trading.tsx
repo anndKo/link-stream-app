@@ -2354,7 +2354,7 @@ const Trading = () => {
                                   }`}
                                 >
                                   <div
-                                    className={`max-w-[80%] rounded-lg p-2 ${
+                                    className={`max-w-[75%] rounded-2xl p-2 ${
                                       msg.sender_id === user?.id
                                         ? 'bg-primary text-primary-foreground'
                                         : 'bg-secondary'
@@ -2582,7 +2582,7 @@ const Trading = () => {
                               }`}
                             >
                               <div
-                                className={`max-w-[80%] rounded-lg p-3 ${
+                                className={`max-w-[75%] rounded-2xl p-3 ${
                                   msg.sender_id === user?.id
                                     ? 'bg-primary text-primary-foreground'
                                     : 'bg-secondary'
@@ -2634,7 +2634,7 @@ const Trading = () => {
                     </Button>
                   )}
 
-                  <div className="p-4 border-t glass">
+                  <div className="p-3 border-t glass">
                     {messageImagePreview && (
                       <div className="relative inline-block mb-2">
                         <img
@@ -2655,12 +2655,13 @@ const Trading = () => {
                         </Button>
                       </div>
                     )}
-                    <div className="flex gap-2">
+                    <div className="flex items-center gap-1.5">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
                             variant="ghost"
                             size="icon"
+                            className="h-9 w-9 shrink-0"
                           >
                             <MoreVertical className="w-5 h-5" />
                           </Button>
@@ -2692,14 +2693,15 @@ const Trading = () => {
                             handleSendMessage();
                           }
                         }}
-                        className="flex-1"
+                        className="flex-1 min-w-0 h-9"
                       />
                       <Button
                         size="icon"
+                        className="h-9 w-9 shrink-0"
                         onClick={handleSendMessage}
                         disabled={!messageContent.trim() && !messageImage}
                       >
-                        <Send className="w-5 h-5" />
+                        <Send className="w-4 h-4" />
                       </Button>
                     </div>
                   </div>
