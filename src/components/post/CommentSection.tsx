@@ -63,7 +63,7 @@ const ReactionButton = memo(({ userReaction, commentId, onReaction }: {
   }, []);
 
   const handleMouseLeave = useCallback(() => {
-    hideTimeout.current = setTimeout(() => setShowPicker(false), 2000);
+    hideTimeout.current = setTimeout(() => setShowPicker(false), 700);
   }, []);
 
   const handleSelect = useCallback((emoji: string) => {
