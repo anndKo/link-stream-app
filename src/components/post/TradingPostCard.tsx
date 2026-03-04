@@ -261,7 +261,7 @@ export const TradingPostCard = memo(({ post, onDelete, onImageClick, onStartConv
 
   return (
     <>
-      <Card className="glass">
+    <Card className="glass overflow-hidden">
         <CardContent className="pt-4 px-3 sm:px-6">
           <div className="flex items-start gap-2 sm:gap-3">
             <Link to={`/profile/${post.user_id}`} className="flex-shrink-0">
@@ -358,7 +358,7 @@ export const TradingPostCard = memo(({ post, onDelete, onImageClick, onStartConv
               )}
 
               {/* Action buttons */}
-              <div className="flex items-center justify-center gap-1 mt-3 pt-3 border-t border-border/50">
+              <div className="flex items-center justify-center gap-1 mt-3 pt-3 border-t border-border/50 -mx-2 sm:mx-0">
                 <Button
                   variant="ghost" size="sm"
                   className={cn('rounded-xl gap-1 flex-1 h-8 text-xs px-1', liked && 'text-destructive hover:text-destructive')}

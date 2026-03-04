@@ -128,12 +128,12 @@ export const ImageLightbox = ({ src, alt = 'Image', isOpen, onClose }: ImageLigh
   return (
     <div
       ref={containerRef}
-      className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center animate-fade-in"
+      className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-sm flex items-center justify-center animate-fade-in"
       onClick={handleBackdropClick}
       onWheel={handleWheel}
     >
       {/* Controls */}
-      <div className="fixed top-4 right-4 z-50 flex gap-2">
+      <div className="fixed top-4 right-4 z-[201] flex gap-2">
         <Button
           variant="ghost"
           size="icon"
