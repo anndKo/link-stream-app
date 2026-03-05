@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Download } from 'lucide-react';
 import { Button } from './button';
 
@@ -126,7 +127,7 @@ export const ImageLightbox = ({ src, alt = 'Image', isOpen, onClose }: ImageLigh
     }
   };
 
-  return (
+  return createPortal(
     <div
       ref={containerRef}
       className="fixed inset-0 z-[9999] bg-black/90 backdrop-blur-sm flex items-center justify-center animate-fade-in"
@@ -175,6 +176,7 @@ export const ImageLightbox = ({ src, alt = 'Image', isOpen, onClose }: ImageLigh
         onTouchEnd={handleTouchEnd}
         draggable={false}
       />
-    </div>
+    </div>,
+    document.body
   );
 };
