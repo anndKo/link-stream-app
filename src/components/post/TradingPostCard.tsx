@@ -336,7 +336,7 @@ export const TradingPostCard = memo(({ post, onDelete, onImageClick, onStartConv
               </div>
               {currentContent && <TradingPostContent content={currentContent} />}
               {currentImageUrl && (
-                <div className="mt-3">
+                <div className="mt-3 -mx-1 sm:mx-0">
                   <ImageGrid 
                     images={parseImageUrls(currentImageUrl)} 
                     onImageClick={(url) => setLightboxSrc(url)}
@@ -349,7 +349,7 @@ export const TradingPostCard = memo(({ post, onDelete, onImageClick, onStartConv
               {user?.id !== post.user_id && (
                 <Button
                   variant="outline" size="sm"
-                  className="rounded-xl gap-1.5 w-full h-8 text-xs mt-3"
+                  className="rounded-xl gap-1.5 w-full h-9 text-xs mt-3"
                   onClick={() => onStartConversation(post.user_id, post)}
                 >
                   <Send className="w-3.5 h-3.5" />
@@ -358,26 +358,26 @@ export const TradingPostCard = memo(({ post, onDelete, onImageClick, onStartConv
               )}
 
               {/* Action buttons */}
-              <div className="flex items-center justify-center gap-1 mt-3 pt-3 border-t border-border/50 -mx-2 sm:mx-0">
+              <div className="flex items-center justify-between gap-1 mt-3 pt-3 border-t border-border/50">
                 <Button
                   variant="ghost" size="sm"
-                  className={cn('rounded-xl gap-1 flex-1 h-8 text-xs px-1', liked && 'text-destructive hover:text-destructive')}
+                  className={cn('rounded-xl gap-1.5 flex-1 h-9 text-xs', liked && 'text-destructive hover:text-destructive')}
                   onClick={handleLike}
                   disabled={isLiking || !user}
                 >
-                  <Heart className={cn('w-3.5 h-3.5', liked && 'fill-current')} />
+                  <Heart className={cn('w-4 h-4', liked && 'fill-current')} />
                   <span className="truncate">{likeCount > 0 ? likeCount + ' ' : ''}Thích</span>
                 </Button>
                 <Button
                   variant="ghost" size="sm"
-                  className={cn('rounded-xl gap-1 flex-1 h-8 text-xs px-1', showComments && 'bg-secondary')}
+                  className={cn('rounded-xl gap-1.5 flex-1 h-9 text-xs', showComments && 'bg-secondary')}
                   onClick={() => setShowComments(!showComments)}
                 >
-                  <MessageCircle className="w-3.5 h-3.5" />
+                  <MessageCircle className="w-4 h-4" />
                   <span className="truncate">{commentCount > 0 ? commentCount + ' ' : ''}Bình luận</span>
                 </Button>
-                <Button variant="ghost" size="sm" className="rounded-xl gap-1 flex-1 h-8 text-xs px-1" onClick={handleShare}>
-                  <Share2 className="w-3.5 h-3.5" />
+                <Button variant="ghost" size="sm" className="rounded-xl gap-1.5 flex-1 h-9 text-xs" onClick={handleShare}>
+                  <Share2 className="w-4 h-4" />
                   <span className="truncate">Chia sẻ</span>
                 </Button>
               </div>
@@ -408,8 +408,8 @@ export const TradingPostCard = memo(({ post, onDelete, onImageClick, onStartConv
       </AlertDialog>
 
       {/* Edit Dialog */}
-      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent className="glass max-w-md">
+      <Dialog open={showEditDialog} onOpenChange={(open) => { if (!lightboxSrc) setShowEditDialog(open); }}>
+        <DialogContent className="glass max-w-md" onInteractOutside={(e) => { if (lightboxSrc) e.preventDefault(); }} onPointerDownOutside={(e) => { if (lightboxSrc) e.preventDefault(); }}>
           <DialogHeader>
             <DialogTitle>Chỉnh sửa bài viết</DialogTitle>
           </DialogHeader>

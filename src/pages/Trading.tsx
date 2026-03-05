@@ -250,6 +250,9 @@ const Trading = () => {
   }, []);
 
   const scrollToBottom = useCallback(() => {
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     setShowScrollToBottom(false);
   }, []);
@@ -1929,7 +1932,7 @@ const Trading = () => {
 
   return (
     <MainLayout>
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="max-w-[1200px] mx-auto px-2 sm:px-4 py-6">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-12 h-12 rounded-xl gradient-primary flex items-center justify-center">
             <Sparkles className="w-6 h-6 text-primary-foreground" />
@@ -2185,9 +2188,9 @@ const Trading = () => {
           </div>
 
           {/* Fixed Chat Section - Desktop */}
-          <div className="hidden lg:block w-80 flex-shrink-0">
-            <div className="sticky top-24">
-              <Card className="glass h-[calc(100vh-8rem)] flex flex-col">
+          <div className="hidden lg:block w-[380px] flex-shrink-0">
+            <div className={`fixed ${navVisible ? 'top-24' : 'top-4'} w-[380px] transition-[top] duration-300`} style={{ height: navVisible ? 'calc(100vh - 6rem)' : 'calc(100vh - 1rem)' }}>
+              <Card className="glass h-full flex flex-col overflow-hidden">
                 <CardHeader className="pb-3 flex-shrink-0">
                   <div className="flex items-center justify-between">
                     {showConversationList ? (
@@ -2332,8 +2335,13 @@ const Trading = () => {
                       </ScrollArea>
                     </div>
                   ) : (
-                    <div className="flex flex-col h-full relative">
-                      <ScrollArea className="flex-1 px-4" onScrollCapture={handleMessagesScroll}>
+                    <div className="flex flex-col h-full relative overflow-hidden">
+                      <div
+                        ref={messagesContainerRef}
+                        className="flex-1 overflow-y-auto px-4 scrollbar-thin"
+                        style={{ overscrollBehavior: 'contain' }}
+                        onScroll={handleMessagesScroll}
+                      >
                         <div className="space-y-2 py-2">
                           {(() => {
                             const allItems = [
@@ -2354,20 +2362,21 @@ const Trading = () => {
                                   }`}
                                 >
                                   <div
-                                    className={`max-w-[75%] rounded-2xl p-2 ${
+                                    className={`max-w-[70%] rounded-2xl p-2 break-words overflow-hidden ${
                                       msg.sender_id === user?.id
                                         ? 'bg-primary text-primary-foreground'
                                         : 'bg-secondary'
                                     }`}
                                   >
                                     {msg.content && (
-                                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                                      <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
                                     )}
                                     {msg.image_url && (
                                       <img
                                         src={msg.image_url}
                                         alt="Message"
-                                        className="max-w-full rounded mt-1 cursor-pointer"
+                                        className="max-w-full rounded mt-1 cursor-pointer block"
+                                        style={{ maxHeight: '200px', objectFit: 'contain' }}
                                         onClick={() => setLightboxImage(msg.image_url)}
                                       />
                                     )}
@@ -2393,13 +2402,13 @@ const Trading = () => {
                           )}
                           <div ref={messagesEndRef} />
                         </div>
-                      </ScrollArea>
+                      </div>
                       
                       {showScrollToBottom && (
                         <Button
                           variant="secondary"
                           size="icon"
-                          className="absolute bottom-24 right-4 rounded-full shadow-lg z-10 h-8 w-8"
+                          className="absolute bottom-16 left-4 rounded-full shadow-lg z-10 h-8 w-8"
                           onClick={scrollToBottom}
                         >
                           <ArrowDown className="w-4 h-4" />
@@ -2560,8 +2569,12 @@ const Trading = () => {
 
             <div className="flex-1 overflow-hidden">
               {selectedConversation && !showConversationList ? (
-                <div className="flex flex-col h-full relative">
-                  <ScrollArea className="flex-1 p-4" onScrollCapture={handleMessagesScroll}>
+                <div className="flex flex-col h-full relative overflow-hidden">
+                  <div
+                    className="flex-1 overflow-y-auto p-4"
+                    style={{ overscrollBehavior: 'contain' }}
+                    onScroll={handleMessagesScroll}
+                  >
                     <div className="space-y-3">
                       {(() => {
                         const allItems = [
@@ -2582,20 +2595,21 @@ const Trading = () => {
                               }`}
                             >
                               <div
-                                className={`max-w-[75%] rounded-2xl p-3 ${
+                                className={`max-w-[70%] rounded-2xl p-3 break-words overflow-hidden ${
                                   msg.sender_id === user?.id
                                     ? 'bg-primary text-primary-foreground'
                                     : 'bg-secondary'
                                 }`}
                               >
                                 {msg.content && (
-                                  <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                                  <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
                                 )}
                                 {msg.image_url && (
                                   <img
                                     src={msg.image_url}
                                     alt="Message"
-                                    className="max-w-full rounded mt-1 cursor-pointer"
+                                    className="max-w-full rounded mt-1 cursor-pointer block"
+                                    style={{ maxHeight: '250px', objectFit: 'contain' }}
                                     onClick={() => setLightboxImage(msg.image_url)}
                                   />
                                 )}
@@ -2621,13 +2635,13 @@ const Trading = () => {
                       )}
                       <div ref={messagesEndRef} />
                     </div>
-                  </ScrollArea>
+                  </div>
                   
                   {showScrollToBottom && (
                     <Button
                       variant="secondary"
                       size="icon"
-                      className="absolute bottom-24 right-4 rounded-full shadow-lg z-10 h-10 w-10"
+                      className="absolute bottom-16 left-4 rounded-full shadow-lg z-10 h-10 w-10"
                       onClick={scrollToBottom}
                     >
                       <ArrowDown className="w-5 h-5" />

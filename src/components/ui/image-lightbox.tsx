@@ -104,6 +104,7 @@ export const ImageLightbox = ({ src, alt = 'Image', isOpen, onClose }: ImageLigh
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === containerRef.current) {
+      e.stopPropagation();
       onClose();
     }
   };
@@ -128,17 +129,17 @@ export const ImageLightbox = ({ src, alt = 'Image', isOpen, onClose }: ImageLigh
   return (
     <div
       ref={containerRef}
-      className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-sm flex items-center justify-center animate-fade-in"
+      className="fixed inset-0 z-[9999] bg-black/90 backdrop-blur-sm flex items-center justify-center animate-fade-in"
       onClick={handleBackdropClick}
       onWheel={handleWheel}
     >
       {/* Controls */}
-      <div className="fixed top-4 right-4 z-[201] flex gap-2">
+      <div className="fixed top-4 right-4 z-[10001] flex gap-2">
         <Button
           variant="ghost"
           size="icon"
           className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/20 text-white"
-          onClick={handleDownload}
+          onClick={(e) => { e.stopPropagation(); handleDownload(); }}
         >
           <Download className="w-5 h-5" />
         </Button>
@@ -146,7 +147,7 @@ export const ImageLightbox = ({ src, alt = 'Image', isOpen, onClose }: ImageLigh
           variant="ghost"
           size="icon"
           className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/20 text-white"
-          onClick={onClose}
+          onClick={(e) => { e.stopPropagation(); onClose(); }}
         >
           <X className="w-5 h-5" />
         </Button>
@@ -165,7 +166,7 @@ export const ImageLightbox = ({ src, alt = 'Image', isOpen, onClose }: ImageLigh
           touchAction: 'none',
         }}
         onClick={(e) => e.stopPropagation()}
-        onMouseDown={handleMouseDown}
+        onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e); }}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}

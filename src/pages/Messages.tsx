@@ -47,6 +47,7 @@ import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
+import { ImageLightbox } from '@/components/ui/image-lightbox';
 
 const Messages = () => {
   const { user } = useAuth();
@@ -74,6 +75,7 @@ const Messages = () => {
     const stored = localStorage.getItem('notification_sound_enabled');
     return stored !== 'false'; // default true
   });
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -745,7 +747,8 @@ const Messages = () => {
                 <div 
                   ref={messagesContainerRef}
                   onScroll={handleMessagesScroll}
-                  className="flex-1 overflow-y-auto p-4 space-y-3 relative scrollbar-thin"
+                  className="flex-1 overflow-y-auto p-4 space-y-3 relative scrollbar-thin overscroll-contain"
+                  style={{ overscrollBehavior: 'contain' }}
                 >
                   {messages.length === 0 ? (
                     <div className="flex items-center justify-center h-full">
@@ -773,10 +776,10 @@ const Messages = () => {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="absolute -right-10 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                              className="absolute -right-10 top-1/2 -translate-y-1/2 h-7 w-7 rounded-full opacity-70"
                               onClick={() => setReplyingTo(msg)}
                             >
-                              <Reply className="w-4 h-4" />
+                              <Reply className="w-3.5 h-3.5" />
                             </Button>
                           )}
                           
@@ -787,9 +790,9 @@ const Messages = () => {
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className="absolute -left-10 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                  className="absolute -left-10 top-1/2 -translate-y-1/2 h-7 w-7 rounded-full opacity-70"
                                 >
-                                  <MoreVertical className="w-4 h-4" />
+                                  <MoreVertical className="w-3.5 h-3.5" />
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="glass">
@@ -861,8 +864,8 @@ const Messages = () => {
                                 <img
                                   src={msg.image_url}
                                   alt="Message image"
-                                  className="rounded-lg max-w-full mb-2 cursor-pointer hover:opacity-90"
-                                  onClick={() => window.open(msg.image_url!, '_blank')}
+                                  className="rounded-lg max-w-full mb-2 cursor-pointer hover:opacity-90 block"
+                                  onClick={() => setLightboxImage(msg.image_url!)}
                                 />
                               )}
                               {msg.content && (
@@ -895,12 +898,15 @@ const Messages = () => {
                   )}
                   <div ref={messagesEndRef} />
                   
-                  {/* Scroll to bottom button */}
+                </div>
+
+                <div className="relative">
+                  {/* Scroll to bottom button - fixed above input bar, left side */}
                   {showScrollToBottom && (
                     <Button
                       variant="secondary"
                       size="icon"
-                      className="fixed bottom-28 right-8 md:absolute md:bottom-24 md:right-6 rounded-full shadow-lg z-10 h-10 w-10"
+                      className="absolute -top-12 left-4 rounded-full shadow-lg z-10 h-10 w-10"
                       onClick={scrollToBottom}
                     >
                       <ArrowDown className="w-5 h-5" />
@@ -1105,6 +1111,14 @@ const Messages = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Image Lightbox */}
+      <ImageLightbox
+        src={lightboxImage || ''}
+        alt="Message image"
+        isOpen={!!lightboxImage}
+        onClose={() => setLightboxImage(null)}
+      />
     </MainLayout>
   );
 };
