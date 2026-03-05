@@ -472,8 +472,8 @@ export const PostCard = memo(({ post, onDelete }: PostCardProps) => {
       </AlertDialog>
 
       {/* Edit Post Dialog */}
-      <Dialog open={showEditDialog} onOpenChange={(open) => { if (!lightboxSrc) setShowEditDialog(open); }}>
-        <DialogContent className="glass max-w-md" onInteractOutside={(e) => { if (lightboxSrc) e.preventDefault(); }} onPointerDownOutside={(e) => { if (lightboxSrc) e.preventDefault(); }}>
+      <Dialog open={showEditDialog} onOpenChange={(open) => { if (!lightboxSrc) setShowEditDialog(open); }} modal={!lightboxSrc}>
+        <DialogContent className="glass max-w-md" onInteractOutside={(e) => { if (lightboxSrc) e.preventDefault(); }} onPointerDownOutside={(e) => { if (lightboxSrc) e.preventDefault(); }} onFocusOutside={(e) => { if (lightboxSrc) e.preventDefault(); }}>
           <DialogHeader>
             <DialogTitle>Chỉnh sửa bài viết</DialogTitle>
           </DialogHeader>
