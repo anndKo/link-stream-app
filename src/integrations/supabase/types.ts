@@ -608,31 +608,48 @@ export type Database = {
         Row: {
           content: string | null
           created_at: string | null
+          deleted_at: string | null
+          edited_at: string | null
           id: string
           image_url: string | null
           is_read: boolean | null
           receiver_id: string
+          reply_to_id: string | null
           sender_id: string
         }
         Insert: {
           content?: string | null
           created_at?: string | null
+          deleted_at?: string | null
+          edited_at?: string | null
           id?: string
           image_url?: string | null
           is_read?: boolean | null
           receiver_id: string
+          reply_to_id?: string | null
           sender_id: string
         }
         Update: {
           content?: string | null
           created_at?: string | null
+          deleted_at?: string | null
+          edited_at?: string | null
           id?: string
           image_url?: string | null
           is_read?: boolean | null
           receiver_id?: string
+          reply_to_id?: string | null
           sender_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "transaction_messages_reply_to_id_fkey"
+            columns: ["reply_to_id"]
+            isOneToOne: false
+            referencedRelation: "transaction_messages"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       transaction_posts: {
         Row: {
@@ -756,6 +773,9 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user"
+      message_status: "sent" | "delivered" | "read"
+      post_visibility: "public" | "private"
+      report_status: "open" | "resolved" | "banned"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -884,6 +904,9 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user"],
+      message_status: ["sent", "delivered", "read"],
+      post_visibility: ["public", "private"],
+      report_status: ["open", "resolved", "banned"],
     },
   },
 } as const

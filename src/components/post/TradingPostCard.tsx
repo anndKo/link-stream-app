@@ -118,6 +118,7 @@ export const TradingPostCard = memo(({ post, onDelete, onImageClick, onStartConv
   const [editImageRemoved, setEditImageRemoved] = useState(false);
   const editImageInputRef = useRef<HTMLInputElement>(null);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const isOwner = user?.id === post.user_id;
 
@@ -293,12 +294,13 @@ export const TradingPostCard = memo(({ post, onDelete, onImageClick, onStartConv
                     <span className="text-[10px] text-muted-foreground/70 italic">· Đã chỉnh sửa</span>
                   )}
                 </div>
-                <DropdownMenu>
+                <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="h-8 w-8">
                       <MoreVertical className="w-4 h-4" />
                     </Button>
                   </DropdownMenuTrigger>
+                  {dropdownOpen && <div className="fixed inset-0 bg-black/50 z-[79]" onClick={() => setDropdownOpen(false)} />}
                   <DropdownMenuContent align="end" className="glass z-[80]">
                     {isOwner && (
                       <>
@@ -391,7 +393,7 @@ export const TradingPostCard = memo(({ post, onDelete, onImageClick, onStartConv
 
       {/* Delete Confirmation */}
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <AlertDialogContent className="glass">
+        <AlertDialogContent className="glass z-[110]">
           <AlertDialogHeader>
             <AlertDialogTitle>Xác nhận xóa bài viết</AlertDialogTitle>
             <AlertDialogDescription>
@@ -409,7 +411,7 @@ export const TradingPostCard = memo(({ post, onDelete, onImageClick, onStartConv
 
       {/* Edit Dialog */}
       <Dialog open={showEditDialog} onOpenChange={(open) => { if (!lightboxSrc) setShowEditDialog(open); }} modal={!lightboxSrc}>
-        <DialogContent className="glass max-w-md" onInteractOutside={(e) => { if (lightboxSrc) e.preventDefault(); }} onPointerDownOutside={(e) => { if (lightboxSrc) e.preventDefault(); }} onFocusOutside={(e) => { if (lightboxSrc) e.preventDefault(); }}>
+        <DialogContent className="glass max-w-md z-[110]" onInteractOutside={(e) => { if (lightboxSrc) e.preventDefault(); }} onPointerDownOutside={(e) => { if (lightboxSrc) e.preventDefault(); }} onFocusOutside={(e) => { if (lightboxSrc) e.preventDefault(); }}>
           <DialogHeader>
             <DialogTitle>Chỉnh sửa bài viết</DialogTitle>
           </DialogHeader>

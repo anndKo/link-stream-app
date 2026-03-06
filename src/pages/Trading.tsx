@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { TradingPostCard } from '@/components/post/TradingPostCard';
+import { TradingMessageBubble } from '@/components/trading/TradingMessageBubble';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -10,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ImagePlus, Send, X, Search, Image as ImageIcon, Clock, Shuffle, List, Sparkles, MessageCircle, ArrowLeft, ArrowDown, MoreVertical, Flag, CreditCard, Check, XCircle, Trash2, RefreshCw, CheckCircle, Timer, Tag } from 'lucide-react';
+import { ImagePlus, Send, X, Search, Image as ImageIcon, Clock, Shuffle, List, Sparkles, MessageCircle, ArrowLeft, ArrowDown, MoreVertical, Flag, CreditCard, Check, XCircle, Trash2, RefreshCw, CheckCircle, Timer, Tag, Reply, Pencil } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -73,6 +74,9 @@ interface TradingMessage {
   image_url: string | null;
   is_read: boolean;
   created_at: string;
+  edited_at?: string | null;
+  deleted_at?: string | null;
+  reply_to_id?: string | null;
 }
 
 interface TradingConversation {
@@ -160,6 +164,10 @@ const Trading = () => {
   const [showConversationList, setShowConversationList] = useState(true);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [showReportDialog, setShowReportDialog] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<TradingMessage | null>(null);
+  const [editingMessage, setEditingMessage] = useState<TradingMessage | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const messageInputRef = useRef<HTMLInputElement>(null);
   const [reportReason, setReportReason] = useState('');
   const [reportDescription, setReportDescription] = useState('');
   const [showPaymentBoxDialog, setShowPaymentBoxDialog] = useState(false);
@@ -236,6 +244,16 @@ const Trading = () => {
     };
     fetchAdminSettings();
   }, []);
+
+  // Check if user is admin
+  useEffect(() => {
+    if (!user) return;
+    const checkAdmin = async () => {
+      const { data } = await supabase.rpc('is_admin');
+      setIsAdmin(!!data);
+    };
+    checkAdmin();
+  }, [user]);
 
   useEffect(() => {
     const id = window.setInterval(() => setNowTick(Date.now()), 1000);
@@ -605,7 +623,14 @@ const Trading = () => {
           schema: 'public',
           table: 'transaction_messages'
         },
-        () => {
+        (payload) => {
+          const updatedMsg = payload.new as TradingMessage;
+          // Update message in current chat if relevant
+          if (selectedConversation && 
+              (updatedMsg.sender_id === selectedConversation || updatedMsg.receiver_id === selectedConversation ||
+               updatedMsg.sender_id === user.id || updatedMsg.receiver_id === user.id)) {
+            setMessages(prev => prev.map(m => m.id === updatedMsg.id ? updatedMsg : m));
+          }
           fetchConversations();
         }
       )
@@ -695,9 +720,32 @@ const Trading = () => {
     }
   };
 
-  // Send message
+  // Send message (with reply support)
   const handleSendMessage = async () => {
-    if (!user || !selectedConversation || (!messageContent.trim() && !messageImage)) return;
+    if (!user || !selectedConversation) return;
+
+    // If editing a message
+    if (editingMessage) {
+      if (!messageContent.trim()) return;
+      try {
+        const { error } = await supabase
+          .from('transaction_messages')
+          .update({ content: messageContent.trim(), edited_at: new Date().toISOString() })
+          .eq('id', editingMessage.id)
+          .eq('sender_id', user.id);
+        if (error) throw error;
+        setMessages(prev => prev.map(m => m.id === editingMessage.id ? { ...m, content: messageContent.trim(), edited_at: new Date().toISOString() } : m));
+        setEditingMessage(null);
+        setMessageContent('');
+        fetchConversations();
+      } catch (error) {
+        console.error('Error editing message:', error);
+        toast({ title: 'Lỗi', description: 'Không thể chỉnh sửa tin nhắn', variant: 'destructive' });
+      }
+      return;
+    }
+
+    if (!messageContent.trim() && !messageImage) return;
 
     try {
       let imageUrl = null;
@@ -725,7 +773,8 @@ const Trading = () => {
           sender_id: user.id,
           receiver_id: selectedConversation,
           content: messageContent.trim() || null,
-          image_url: imageUrl
+          image_url: imageUrl,
+          reply_to_id: replyingTo?.id || null,
         });
 
       if (error) throw error;
@@ -733,6 +782,7 @@ const Trading = () => {
       setMessageContent('');
       setMessageImage(null);
       setMessageImagePreview(null);
+      setReplyingTo(null);
       fetchMessages();
       fetchConversations();
     } catch (error) {
@@ -744,6 +794,40 @@ const Trading = () => {
       });
     }
   };
+
+  // Recall message
+  const handleRecallMessage = async (msgId: string) => {
+    if (!user) return;
+    try {
+      const { error } = await supabase
+        .from('transaction_messages')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', msgId)
+        .eq('sender_id', user.id);
+      if (error) throw error;
+      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, deleted_at: new Date().toISOString() } : m));
+      fetchConversations();
+      toast({ title: 'Đã thu hồi tin nhắn' });
+    } catch (error) {
+      console.error('Error recalling message:', error);
+      toast({ title: 'Lỗi', description: 'Không thể thu hồi tin nhắn', variant: 'destructive' });
+    }
+  };
+
+  // Handle reply action
+  const handleReplyToMessage = useCallback((msg: TradingMessage) => {
+    setReplyingTo(msg);
+    setEditingMessage(null);
+    setTimeout(() => messageInputRef.current?.focus(), 50);
+  }, []);
+
+  // Handle edit action
+  const handleEditMessage = useCallback((msg: TradingMessage) => {
+    setEditingMessage(msg);
+    setReplyingTo(null);
+    setMessageContent(msg.content || '');
+    setTimeout(() => messageInputRef.current?.focus(), 50);
+  }, []);
 
   // Start conversation with user
   const startConversation = async (userId: string, postData?: TradingPost) => {
@@ -2315,7 +2399,7 @@ const Trading = () => {
                                   {convo.participant.display_name || convo.participant.username}
                                 </p>
                                 <p className="text-xs text-muted-foreground truncate">
-                                  {convo.lastMessage?.content || 'Hình ảnh'}
+                                  {convo.lastMessage?.deleted_at ? '🚫 Tin nhắn đã thu hồi' : (convo.lastMessage?.content || 'Hình ảnh')}
                                 </p>
                               </div>
                               {convo.unreadCount > 0 && (
@@ -2355,43 +2439,18 @@ const Trading = () => {
                               }
                               const msg = item.data as TradingMessage;
                               return (
-                                <div
+                                <TradingMessageBubble
                                   key={msg.id}
-                                  className={`flex ${
-                                    msg.sender_id === user?.id ? 'justify-end' : 'justify-start'
-                                  }`}
-                                >
-                                  <div
-                                    className={`max-w-[70%] rounded-2xl p-2 break-words overflow-hidden ${
-                                      msg.sender_id === user?.id
-                                        ? 'bg-primary text-primary-foreground'
-                                        : 'bg-secondary'
-                                    }`}
-                                  >
-                                    {msg.content && (
-                                      <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
-                                    )}
-                                    {msg.image_url && (
-                                      <img
-                                        src={msg.image_url}
-                                        alt="Message"
-                                        className="max-w-full rounded mt-1 cursor-pointer block"
-                                        style={{ maxHeight: '200px', objectFit: 'contain' }}
-                                        onClick={() => setLightboxImage(msg.image_url)}
-                                      />
-                                    )}
-                                    <p className={`text-[10px] mt-1 ${
-                                      msg.sender_id === user?.id
-                                        ? 'text-primary-foreground/70'
-                                        : 'text-muted-foreground'
-                                    }`}>
-                                      {formatDistanceToNow(new Date(msg.created_at), {
-                                        addSuffix: true,
-                                        locale: vi
-                                      })}
-                                    </p>
-                                  </div>
-                                </div>
+                                  msg={msg}
+                                  userId={user?.id}
+                                  isAdmin={isAdmin}
+                                  allMessages={messages}
+                                  onImageClick={setLightboxImage}
+                                  onReply={handleReplyToMessage}
+                                  onEdit={handleEditMessage}
+                                  onRecall={handleRecallMessage}
+                                  partnerName={selectedPartner?.display_name || selectedPartner?.username}
+                                />
                               );
                             });
                           })()}
@@ -2416,6 +2475,30 @@ const Trading = () => {
                       )}
 
                       <div className="p-3 border-t">
+                        {/* Reply/Edit bar */}
+                        {(replyingTo || editingMessage) && (
+                          <div className="flex items-center gap-2 mb-2 p-2 bg-secondary/50 rounded-lg text-xs">
+                            <div className="flex-1 min-w-0">
+                              {replyingTo && (
+                                <>
+                                  <span className="flex items-center gap-1 text-primary font-medium"><Reply className="w-3 h-3" /> Trả lời {replyingTo.sender_id === user?.id ? 'chính mình' : (selectedPartner?.display_name || selectedPartner?.username)}</span>
+                                  <p className="text-muted-foreground truncate">{replyingTo.content || '📷 Hình ảnh'}</p>
+                                </>
+                              )}
+                              {editingMessage && (
+                                <span className="flex items-center gap-1 text-primary font-medium"><Pencil className="w-3 h-3" /> Chỉnh sửa tin nhắn</span>
+                              )}
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 shrink-0"
+                              onClick={() => { setReplyingTo(null); setEditingMessage(null); if (editingMessage) setMessageContent(''); }}
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        )}
                         {messageImagePreview && (
                           <div className="relative inline-block mb-2">
                             <img
@@ -2444,41 +2527,49 @@ const Trading = () => {
                             className="hidden"
                             onChange={handleMessageImageSelect}
                           />
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-9 w-9"
-                              >
-                                <MoreVertical className="w-4 h-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="start" className="glass">
-                              <DropdownMenuItem
-                                onClick={() => messageImageInputRef.current?.click()}
-                                className="cursor-pointer"
-                              >
-                                <ImageIcon className="w-4 h-4 mr-2" />
-                                Tải ảnh lên
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => setShowPaymentBoxDialog(true)}
-                                className="cursor-pointer"
-                              >
-                                <CreditCard className="w-4 h-4 mr-2" />
-                                Hộp thanh toán
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          {!editingMessage && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-9 w-9"
+                                >
+                                  <MoreVertical className="w-4 h-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="start" className="glass">
+                                <DropdownMenuItem
+                                  onClick={() => messageImageInputRef.current?.click()}
+                                  className="cursor-pointer"
+                                >
+                                  <ImageIcon className="w-4 h-4 mr-2" />
+                                  Tải ảnh lên
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => setShowPaymentBoxDialog(true)}
+                                  className="cursor-pointer"
+                                >
+                                  <CreditCard className="w-4 h-4 mr-2" />
+                                  Hộp thanh toán
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
                           <Input
-                            placeholder="Nhập tin nhắn..."
+                            ref={messageInputRef}
+                            placeholder={editingMessage ? "Chỉnh sửa tin nhắn..." : "Nhập tin nhắn..."}
                             value={messageContent}
                             onChange={(e) => setMessageContent(e.target.value)}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' && !e.shiftKey) {
                                 e.preventDefault();
                                 handleSendMessage();
+                              }
+                              if (e.key === 'Escape') {
+                                setReplyingTo(null);
+                                setEditingMessage(null);
+                                if (editingMessage) setMessageContent('');
                               }
                             }}
                             className="flex-1 h-9"
@@ -2588,43 +2679,18 @@ const Trading = () => {
                           }
                           const msg = item.data as TradingMessage;
                           return (
-                            <div
+                            <TradingMessageBubble
                               key={msg.id}
-                              className={`flex ${
-                                msg.sender_id === user?.id ? 'justify-end' : 'justify-start'
-                              }`}
-                            >
-                              <div
-                                className={`max-w-[70%] rounded-2xl p-3 break-words overflow-hidden ${
-                                  msg.sender_id === user?.id
-                                    ? 'bg-primary text-primary-foreground'
-                                    : 'bg-secondary'
-                                }`}
-                              >
-                                {msg.content && (
-                                  <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
-                                )}
-                                {msg.image_url && (
-                                  <img
-                                    src={msg.image_url}
-                                    alt="Message"
-                                    className="max-w-full rounded mt-1 cursor-pointer block"
-                                    style={{ maxHeight: '250px', objectFit: 'contain' }}
-                                    onClick={() => setLightboxImage(msg.image_url)}
-                                  />
-                                )}
-                                <p className={`text-[10px] mt-1 ${
-                                  msg.sender_id === user?.id
-                                    ? 'text-primary-foreground/70'
-                                    : 'text-muted-foreground'
-                                }`}>
-                                  {formatDistanceToNow(new Date(msg.created_at), {
-                                    addSuffix: true,
-                                    locale: vi
-                                  })}
-                                </p>
-                              </div>
-                            </div>
+                              msg={msg}
+                              userId={user?.id}
+                              isAdmin={isAdmin}
+                              allMessages={messages}
+                              onImageClick={setLightboxImage}
+                              onReply={handleReplyToMessage}
+                              onEdit={handleEditMessage}
+                              onRecall={handleRecallMessage}
+                              partnerName={selectedPartner?.display_name || selectedPartner?.username}
+                            />
                           );
                         });
                       })()}
@@ -2649,6 +2715,30 @@ const Trading = () => {
                   )}
 
                   <div className="p-3 border-t glass">
+                    {/* Reply/Edit bar - mobile */}
+                    {(replyingTo || editingMessage) && (
+                      <div className="flex items-center gap-2 mb-2 p-2 bg-secondary/50 rounded-lg text-xs">
+                        <div className="flex-1 min-w-0">
+                          {replyingTo && (
+                            <>
+                              <span className="flex items-center gap-1 text-primary font-medium"><Reply className="w-3 h-3" /> Trả lời {replyingTo.sender_id === user?.id ? 'chính mình' : (selectedPartner?.display_name || selectedPartner?.username)}</span>
+                              <p className="text-muted-foreground truncate">{replyingTo.content || '📷 Hình ảnh'}</p>
+                            </>
+                          )}
+                          {editingMessage && (
+                            <span className="flex items-center gap-1 text-primary font-medium"><Pencil className="w-3 h-3" /> Chỉnh sửa tin nhắn</span>
+                          )}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 shrink-0"
+                          onClick={() => { setReplyingTo(null); setEditingMessage(null); if (editingMessage) setMessageContent(''); }}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    )}
                     {messageImagePreview && (
                       <div className="relative inline-block mb-2">
                         <img
@@ -2670,35 +2760,37 @@ const Trading = () => {
                       </div>
                     )}
                     <div className="flex items-center gap-1.5">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-9 w-9 shrink-0"
-                          >
-                            <MoreVertical className="w-5 h-5" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start" className="glass">
-                          <DropdownMenuItem
-                            onClick={() => messageImageInputRef.current?.click()}
-                            className="cursor-pointer"
-                          >
-                            <ImageIcon className="w-4 h-4 mr-2" />
-                            Tải ảnh lên
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => setShowPaymentBoxDialog(true)}
-                            className="cursor-pointer"
-                          >
-                            <CreditCard className="w-4 h-4 mr-2" />
-                            Hộp thanh toán
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      {!editingMessage && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-9 w-9 shrink-0"
+                            >
+                              <MoreVertical className="w-5 h-5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" className="glass">
+                            <DropdownMenuItem
+                              onClick={() => messageImageInputRef.current?.click()}
+                              className="cursor-pointer"
+                            >
+                              <ImageIcon className="w-4 h-4 mr-2" />
+                              Tải ảnh lên
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => setShowPaymentBoxDialog(true)}
+                              className="cursor-pointer"
+                            >
+                              <CreditCard className="w-4 h-4 mr-2" />
+                              Hộp thanh toán
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                       <Input
-                        placeholder="Nhập tin nhắn..."
+                        placeholder={editingMessage ? "Chỉnh sửa tin nhắn..." : "Nhập tin nhắn..."}
                         value={messageContent}
                         onChange={(e) => setMessageContent(e.target.value)}
                         onKeyDown={(e) => {
@@ -2785,7 +2877,7 @@ const Trading = () => {
                             {convo.participant.display_name || convo.participant.username}
                           </p>
                           <p className="text-sm text-muted-foreground truncate">
-                            {convo.lastMessage?.content || 'Hình ảnh'}
+                            {convo.lastMessage?.deleted_at ? '🚫 Tin nhắn đã thu hồi' : (convo.lastMessage?.content || 'Hình ảnh')}
                           </p>
                         </div>
                         {convo.unreadCount > 0 && (
@@ -2822,7 +2914,7 @@ const Trading = () => {
 
       {/* Report Dialog */}
       <Dialog open={showReportDialog} onOpenChange={setShowReportDialog}>
-        <DialogContent className="glass">
+        <DialogContent className="glass z-[200]">
           <DialogHeader>
             <DialogTitle>Báo cáo người dùng</DialogTitle>
             <DialogDescription>
@@ -3399,7 +3491,7 @@ const Trading = () => {
       </Dialog>
       {/* My Posts Modal */}
       {showMyPostsModal && (
-        <div className="fixed inset-0 z-[60] bg-background/95 backdrop-blur-sm flex flex-col animate-fade-in">
+        <div className="fixed inset-0 z-[60] bg-background/95 backdrop-blur-sm flex flex-col animate-fade-in [&_[role=alertdialog]]:z-[100] [&_[role=dialog]]:z-[100]">
           <div className="flex items-center justify-between p-4 border-b border-border">
             <h2 className="text-lg font-semibold">Bài viết của tôi</h2>
             <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setShowMyPostsModal(false)}>
