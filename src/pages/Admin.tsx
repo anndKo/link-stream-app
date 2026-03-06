@@ -934,13 +934,20 @@ const Admin = () => {
 
           {/* Reports Tab */}
           <TabsContent value="reports" className="space-y-4">
+            {reports.length === 0 ? (
+              <div className="glass rounded-2xl p-12 text-center">
+                <Flag className="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
+                <p className="text-lg font-medium text-muted-foreground">Hiện chưa có báo cáo nào.</p>
+              </div>
+            ) : (
             <div className="glass rounded-2xl overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Người báo cáo</TableHead>
-                    <TableHead>Người bị báo cáo</TableHead>
-                    <TableHead>Lý do</TableHead>
+                    <TableHead>Đối tượng bị báo cáo</TableHead>
+                    <TableHead>Nội dung báo cáo</TableHead>
+                    <TableHead>Thời gian</TableHead>
                     <TableHead>Trạng thái</TableHead>
                     <TableHead className="text-right">Hành động</TableHead>
                   </TableRow>
@@ -956,7 +963,7 @@ const Admin = () => {
                               {report.reporter_profile?.display_name?.charAt(0) || 'U'}
                             </AvatarFallback>
                           </Avatar>
-                          <span>{report.reporter_profile?.display_name}</span>
+                          <span>{report.reporter_profile?.display_name || 'Ẩn danh'}</span>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -967,7 +974,7 @@ const Admin = () => {
                               {report.reported_profile?.display_name?.charAt(0) || 'U'}
                             </AvatarFallback>
                           </Avatar>
-                          <span>{report.reported_profile?.display_name}</span>
+                          <span>{report.reported_profile?.display_name || 'Không xác định'}</span>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -977,6 +984,9 @@ const Admin = () => {
                             {report.description}
                           </p>
                         )}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                        {report.created_at ? formatDistanceToNow(new Date(report.created_at), { addSuffix: true, locale: vi }) : '—'}
                       </TableCell>
                       <TableCell>
                         {report.status === 'pending' ? (
@@ -1014,6 +1024,7 @@ const Admin = () => {
                 </TableBody>
               </Table>
             </div>
+            )}
           </TabsContent>
 
           {/* Payment Boxes Tab */}

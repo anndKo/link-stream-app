@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ImagePlus, Send, X, Search, Image as ImageIcon, Clock, Shuffle, List, Sparkles, MessageCircle, ArrowLeft, ArrowDown, MoreVertical, Flag, CreditCard, Check, XCircle, Trash2, RefreshCw, CheckCircle, Timer, Tag, Reply, Pencil } from 'lucide-react';
+import { ImagePlus, Send, X, Search, Image as ImageIcon, Clock, Shuffle, List, Sparkles, MessageCircle, ArrowLeft, ArrowDown, MoreVertical, Flag, CreditCard, Check, XCircle, Trash2, RefreshCw, CheckCircle, Timer, Tag, Reply, Pencil, Briefcase, MapPin } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,7 +39,9 @@ import { vi } from 'date-fns/locale';
 import { Link } from 'react-router-dom';
 import { ImageLightbox } from '@/components/ui/image-lightbox';
 import { useNavbarVisible } from '@/hooks/use-navbar-visible';
-import { Badge } from '@/components/ui/badge';
+  import { Badge } from '@/components/ui/badge';
+  import { Checkbox } from '@/components/ui/checkbox';
+  import { PaymentBoxStatus, AdminPaymentBoxSettings } from '@/types/database';
 import { PaymentBoxStatus, AdminPaymentBoxSettings } from '@/types/database';
 
 const CATEGORIES = [
@@ -49,6 +51,7 @@ const CATEGORIES = [
   { value: 'dich-vu', label: 'Dịch vụ', color: 'bg-orange-500/15 text-orange-600 dark:text-orange-400 border-orange-500/30' },
   { value: 'crypto', label: 'Crypto', color: 'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400 border-yellow-500/30' },
   { value: 'mmo', label: 'MMO', color: 'bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30' },
+  { value: 'viec-lam', label: 'Việc làm', color: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30' },
 ];
 
 interface TradingPost {
@@ -149,6 +152,17 @@ const Trading = () => {
   const [postSearchQuery, setPostSearchQuery] = useState('');
   const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
   const [showCategories, setShowCategories] = useState(false);
+
+  // Job posting state
+  const [isJobPost, setIsJobPost] = useState(false);
+  const [jobRegion, setJobRegion] = useState('');
+  const [jobAddress, setJobAddress] = useState('');
+  const [jobWorkType, setJobWorkType] = useState<'offline' | 'online' | ''>('');
+  const [jobType, setJobType] = useState<'fulltime' | 'parttime' | ''>('');
+  const [jobTimeFrom, setJobTimeFrom] = useState('');
+  const [jobTimeTo, setJobTimeTo] = useState('');
+  const [showJobConfirmModal, setShowJobConfirmModal] = useState(false);
+  const [jobConfirmChecked, setJobConfirmChecked] = useState(false);
 
   // Messages state
   const [conversations, setConversations] = useState<TradingConversation[]>([]);
@@ -666,6 +680,12 @@ const Trading = () => {
   const handleCreatePost = async () => {
     if (!user || (!postContent.trim() && postImages.length === 0)) return;
 
+    // If it's a job post, show confirmation modal first
+    if (isJobPost && !showJobConfirmModal) {
+      setShowJobConfirmModal(true);
+      return;
+    }
+
     setIsPostLoading(true);
     try {
       let imageUrl: string | null = null;
@@ -685,13 +705,25 @@ const Trading = () => {
 
       const finalCategory = postCategory === 'khac' ? (customCategory.trim() || 'khac') : (postCategory || null);
 
+      // Build content with job info appended
+      let finalContent = postContent.trim() || '';
+      if (isJobPost) {
+        const jobInfo: string[] = ['\n\n📋 **THÔNG TIN VIỆC LÀM**'];
+        if (jobRegion) jobInfo.push(`📍 Khu vực: ${jobRegion}`);
+        if (jobAddress) jobInfo.push(`🏠 Địa chỉ: ${jobAddress}`);
+        if (jobWorkType) jobInfo.push(`💼 Hình thức: ${jobWorkType === 'offline' ? 'Offline' : 'Online'}`);
+        if (jobType) jobInfo.push(`⏰ Loại: ${jobType === 'fulltime' ? 'Full time' : 'Part time'}`);
+        if (jobTimeFrom && jobTimeTo) jobInfo.push(`🕐 Thời gian: ${jobTimeFrom} → ${jobTimeTo}`);
+        finalContent += jobInfo.join('\n');
+      }
+
       const { error } = await supabase
         .from('transaction_posts')
         .insert({
           user_id: user.id,
-          content: postContent.trim() || null,
+          content: finalContent || null,
           image_url: imageUrl,
-          category: finalCategory
+          category: isJobPost ? 'viec-lam' : finalCategory
         });
 
       if (error) throw error;
@@ -701,6 +733,15 @@ const Trading = () => {
       setPostImagePreviews([]);
       setPostCategory('');
       setCustomCategory('');
+      setIsJobPost(false);
+      setJobRegion('');
+      setJobAddress('');
+      setJobWorkType('');
+      setJobType('');
+      setJobTimeFrom('');
+      setJobTimeTo('');
+      setShowJobConfirmModal(false);
+      setJobConfirmChecked(false);
       fetchPosts();
       fetchCategoryCounts();
 
@@ -2043,21 +2084,40 @@ const Trading = () => {
                     </Avatar>
                   </button>
                   <div className="flex-1 space-y-4">
-                {/* Category Selection */}
-                <Select value={postCategory} onValueChange={setPostCategory}>
-                  <SelectTrigger className="rounded-xl">
-                    <div className="flex items-center gap-2">
-                      <Tag className="w-4 h-4 text-muted-foreground" />
-                      <SelectValue placeholder="Chọn chủ đề" />
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent className="glass">
-                    {CATEGORIES.map(cat => (
-                      <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
-                    ))}
-                    <SelectItem value="khac">Khác (tùy chỉnh)</SelectItem>
-                  </SelectContent>
-                </Select>
+                {/* Category Selection + Job Button */}
+                <div className="flex items-center gap-2">
+                  <Select value={postCategory} onValueChange={(v) => { setPostCategory(v); if (v) setIsJobPost(false); }}>
+                    <SelectTrigger className="rounded-xl flex-1">
+                      <div className="flex items-center gap-2">
+                        <Tag className="w-4 h-4 text-muted-foreground" />
+                        <SelectValue placeholder="Chọn chủ đề" />
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent className="glass">
+                      {CATEGORIES.map(cat => (
+                        <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
+                      ))}
+                      <SelectItem value="khac">Khác (tùy chỉnh)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    type="button"
+                    variant={isJobPost ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => {
+                      setIsJobPost(!isJobPost);
+                      if (!isJobPost) setPostCategory('');
+                    }}
+                    className={`rounded-xl gap-1.5 flex-shrink-0 font-medium transition-all ${
+                      isJobPost
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md'
+                        : 'border-emerald-500/50 text-emerald-600 hover:bg-emerald-500/10 hover:border-emerald-500'
+                    }`}
+                  >
+                    <Briefcase className="w-4 h-4" />
+                    <span className="hidden sm:inline">Việc làm</span>
+                  </Button>
+                </div>
 
                 {postCategory === 'khac' && (
                   <Input
@@ -2068,8 +2128,108 @@ const Trading = () => {
                   />
                 )}
 
+                {/* Job posting fields */}
+                {isJobPost && (
+                  <div className="space-y-3 p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20">
+                    <div className="flex items-center gap-2 text-sm font-medium text-emerald-600 dark:text-emerald-400">
+                      <Briefcase className="w-4 h-4" />
+                      Thông tin việc làm
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Khu vực <span className="text-destructive">*</span></Label>
+                        <Input
+                          placeholder="VD: TP. Hồ Chí Minh"
+                          value={jobRegion}
+                          onChange={(e) => setJobRegion(e.target.value)}
+                          className="rounded-xl mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Địa chỉ chi tiết</Label>
+                        <Input
+                          placeholder="VD: 123 Nguyễn Văn A..."
+                          value={jobAddress}
+                          onChange={(e) => setJobAddress(e.target.value)}
+                          className="rounded-xl mt-1"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Hình thức làm việc</Label>
+                      <div className="flex gap-2 mt-1">
+                        <Button
+                          type="button"
+                          variant={jobWorkType === 'offline' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setJobWorkType('offline')}
+                          className="rounded-xl flex-1"
+                        >
+                          Offline
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={jobWorkType === 'online' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setJobWorkType('online')}
+                          className="rounded-xl flex-1"
+                        >
+                          Online
+                        </Button>
+                      </div>
+                    </div>
+                    {jobWorkType && (
+                      <>
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Loại công việc</Label>
+                          <div className="flex gap-2 mt-1">
+                            <Button
+                              type="button"
+                              variant={jobType === 'fulltime' ? 'default' : 'outline'}
+                              size="sm"
+                              onClick={() => setJobType('fulltime')}
+                              className="rounded-xl flex-1"
+                            >
+                              Full time
+                            </Button>
+                            <Button
+                              type="button"
+                              variant={jobType === 'parttime' ? 'default' : 'outline'}
+                              size="sm"
+                              onClick={() => setJobType('parttime')}
+                              className="rounded-xl flex-1"
+                            >
+                              Part time
+                            </Button>
+                          </div>
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Thời gian làm việc</Label>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Input
+                              type="time"
+                              value={jobTimeFrom}
+                              onChange={(e) => setJobTimeFrom(e.target.value)}
+                              className="rounded-xl flex-1"
+                              placeholder="Từ"
+                            />
+                            <span className="text-muted-foreground text-sm">→</span>
+                            <Input
+                              type="time"
+                              value={jobTimeTo}
+                              onChange={(e) => setJobTimeTo(e.target.value)}
+                              className="rounded-xl flex-1"
+                              placeholder="Đến"
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+
                 <Textarea
-                  placeholder="Nội dung giao dịch..."
+                  placeholder={isJobPost ? "Mô tả công việc, yêu cầu, mức lương..." : "Nội dung giao dịch..."}
                   value={postContent}
                   onChange={(e) => setPostContent(e.target.value)}
                   className="min-h-[100px] resize-none rounded-xl"
@@ -2119,7 +2279,7 @@ const Trading = () => {
                   />
                   <Button
                     onClick={handleCreatePost}
-                    disabled={isPostLoading || (!postContent.trim() && postImages.length === 0)}
+                    disabled={isPostLoading || (!postContent.trim() && postImages.length === 0) || (isJobPost && !jobRegion.trim())}
                     className="rounded-xl gradient-primary"
                   >
                     {isPostLoading ? 'Đang đăng...' : 'Đăng bài'}
@@ -3515,6 +3675,95 @@ const Trading = () => {
           </div>
         </div>
       )}
+      {/* Job Posting Confirmation Modal */}
+      <Dialog open={showJobConfirmModal} onOpenChange={(open) => { setShowJobConfirmModal(open); if (!open) setJobConfirmChecked(false); }}>
+        <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-center">⚠️ Cân nhắc trước khi đăng bài</DialogTitle>
+            <DialogDescription className="text-center">Lưu ý trước khi đăng tuyển việc làm</DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="flex-1 pr-4 max-h-[50vh]">
+            <div className="space-y-4 text-sm leading-relaxed">
+              <p>Để đảm bảo môi trường tuyển dụng minh bạch và an toàn cho mọi người, vui lòng tuân thủ các quy định sau trước khi đăng bài tuyển dụng:</p>
+              
+              <div className="space-y-1">
+                <p className="font-semibold">📌 Thông tin tuyển dụng phải chính xác</p>
+                <ul className="list-disc pl-5 text-muted-foreground space-y-1">
+                  <li>Cung cấp đầy đủ thông tin công việc: vị trí, mô tả công việc, mức lương, địa điểm làm việc.</li>
+                  <li>Không đăng thông tin sai sự thật hoặc gây hiểu nhầm.</li>
+                </ul>
+              </div>
+
+              <div className="space-y-1">
+                <p className="font-semibold">🚫 Không đăng nội dung lừa đảo</p>
+                <ul className="list-disc pl-5 text-muted-foreground space-y-1">
+                  <li>Nghiêm cấm các hình thức tuyển dụng yêu cầu đóng phí, đặt cọc, chuyển tiền trước dưới mọi hình thức.</li>
+                  <li>Không đăng các công việc có dấu hiệu đa cấp trái phép hoặc lừa đảo.</li>
+                </ul>
+              </div>
+
+              <div className="space-y-1">
+                <p className="font-semibold">⛔ Không đăng nội dung vi phạm pháp luật</p>
+                <ul className="list-disc pl-5 text-muted-foreground space-y-1">
+                  <li>Không đăng công việc liên quan đến cờ bạc, tín dụng đen, lừa đảo, hoạt động trái pháp luật.</li>
+                  <li>Không đăng nội dung phân biệt đối xử, xúc phạm hoặc gây ảnh hưởng tiêu cực đến người khác.</li>
+                </ul>
+              </div>
+
+              <div className="space-y-1">
+                <p className="font-semibold">🔒 Bảo vệ thông tin cá nhân</p>
+                <ul className="list-disc pl-5 text-muted-foreground space-y-1">
+                  <li>Không yêu cầu ứng viên cung cấp thông tin nhạy cảm như mật khẩu, mã OTP, thông tin ngân hàng không cần thiết.</li>
+                </ul>
+              </div>
+
+              <div className="space-y-1">
+                <p className="font-semibold">📋 Trách nhiệm của người đăng</p>
+                <ul className="list-disc pl-5 text-muted-foreground space-y-1">
+                  <li>Người đăng tuyển chịu trách nhiệm hoàn toàn về nội dung bài đăng.</li>
+                  <li>Ban quản trị có quyền chỉnh sửa, ẩn hoặc xoá bài viết nếu phát hiện vi phạm.</li>
+                </ul>
+              </div>
+
+              <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                <p className="text-destructive font-medium">⚠️ Nếu phát hiện hành vi vi phạm, tài khoản có thể bị cảnh cáo, hạn chế hoặc khóa vĩnh viễn.</p>
+              </div>
+
+              <p className="text-muted-foreground italic">Bằng việc đăng bài, bạn xác nhận rằng đã đọc và đồng ý với các quy định trên.</p>
+            </div>
+          </ScrollArea>
+
+          <div className="pt-4 border-t space-y-4">
+            <div className="flex items-start gap-3">
+              <Checkbox
+                id="job-confirm"
+                checked={jobConfirmChecked}
+                onCheckedChange={(checked) => setJobConfirmChecked(checked === true)}
+                className="mt-0.5"
+              />
+              <label htmlFor="job-confirm" className="text-sm cursor-pointer select-none leading-relaxed">
+                Tôi đã đọc và đồng ý chấp hành với các quy định trên
+              </label>
+            </div>
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={() => { setShowJobConfirmModal(false); setJobConfirmChecked(false); }}
+                className="flex-1 rounded-xl"
+              >
+                Đóng
+              </Button>
+              <Button
+                onClick={handleCreatePost}
+                disabled={!jobConfirmChecked || isPostLoading}
+                className="flex-1 rounded-xl gradient-primary"
+              >
+                {isPostLoading ? 'Đang đăng...' : 'Xác nhận đăng bài'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 };
